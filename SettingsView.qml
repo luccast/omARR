@@ -33,6 +33,7 @@ Column {
 
   readonly property bool needsKey: Model.kindNeedsApiKey(formKind)
   readonly property bool needsUser: Model.kindNeedsUserPass(formKind)
+  readonly property bool needsUsername: Model.kindNeedsUsername(formKind)
 
   signal closeSettings()
 
@@ -532,6 +533,7 @@ Column {
         { value: "sonarr", label: "Sonarr" },
         { value: "radarr", label: "Radarr" },
         { value: "plex", label: "Plex" },
+        { value: "jellyfin", label: "Jellyfin" },
         { value: "sabnzbd", label: "SABnzbd" },
         { value: "qbittorrent", label: "qBittorrent" }
       ]
@@ -565,16 +567,17 @@ Column {
       visible: root.needsKey
       height: visible ? implicitHeight : 0
       password: true
-      placeholderText: root.formKind === "plex" ? "Plex token" : "API key"
+      placeholderText: root.formKind === "plex" ? "Plex token"
+        : root.formKind === "jellyfin" ? "Jellyfin API key" : "API key"
       foreground: root.foreground
     }
 
     TextField {
       id: userField
       width: parent.width
-      visible: root.needsUser
+      visible: root.needsUsername
       height: visible ? implicitHeight : 0
-      placeholderText: "Username"
+      placeholderText: root.formKind === "jellyfin" ? "Profile name (optional)" : "Username"
       foreground: root.foreground
     }
 
@@ -612,9 +615,9 @@ Column {
 
     Toggle {
       width: parent.width
-      visible: root.formKind === "sonarr" || root.formKind === "radarr" || root.formKind === "plex"
+      visible: root.formKind === "sonarr" || root.formKind === "radarr" || Model.isMediaKind(root.formKind)
       height: visible ? implicitHeight : 0
-      label: root.formKind === "plex" ? "Notify on newly added" : "Notify on grab"
+      label: Model.isMediaKind(root.formKind) ? "Notify on newly added" : "Notify on grab"
       checked: root.formNotifyGrab
       foreground: root.foreground
       fontFamily: root.fontFamily

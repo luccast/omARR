@@ -587,6 +587,55 @@ Item {
       }
       return
     }
+    if (req.kind === "jellyfin-identity") {
+      var jellyfin = Model.parseJellyfinIdentity(parsed.body)
+      root.commitIdentity(service, snap, parsed.status, {
+        version: jellyfin.version,
+        statusText: jellyfin.name
+          ? jellyfin.name + (jellyfin.version ? " " + jellyfin.version : "")
+          : jellyfin.version
+      })
+      return
+    }
+    if (req.kind === "jellyfin-sessions") {
+      if (parsed.status >= 200 && parsed.status < 400) {
+        snap.sessions = Model.parseJellyfinSessions(parsed.body, root.pageSize)
+        root.commitSnapshot(snap, service)
+        if (root.panelOpen) root.enqueueJellyfinArt(service, snap)
+      }
+      return
+    }
+    if (req.kind === "jellyfin-users") {
+      if (parsed.status >= 200 && parsed.status < 400) {
+        var jfAuth = root.cred(service.id)
+        var profile = Model.pickJellyfinUser(parsed.body, jfAuth.username)
+        if (!profile.id) {
+          snap.statusText = jfAuth.username ? "Profile not found: " + jfAuth.username : "No enabled profile"
+          root.commitSnapshot(snap, service)
+          return
+        }
+        snap.profileName = profile.name
+        root.commitSnapshot(snap, service)
+        root.enqueueJellyfinLibrary(service, profile.id)
+      }
+      return
+    }
+    if (req.kind === "jellyfin-ondeck") {
+      if (parsed.status >= 200 && parsed.status < 400) {
+        snap.onDeck = Model.parseJellyfinLibrary(parsed.body, root.pageSize)
+        root.commitSnapshot(snap, service)
+        if (root.panelOpen) root.enqueueJellyfinArt(service, snap)
+      }
+      return
+    }
+    if (req.kind === "jellyfin-recent") {
+      if (parsed.status >= 200 && parsed.status < 400) {
+        snap.recent = Model.parseJellyfinLibrary(parsed.body, root.pageSize)
+        root.commitSnapshot(snap, service)
+        if (root.panelOpen) root.enqueueJellyfinArt(service, snap)
+      }
+      return
+    }
   }
 
   function handleFailure() {
@@ -773,6 +822,71 @@ Item {
     }
   }
 
+  function enqueueJellyfin(service) {
+    var auth = root.cred(service.id)
+    var header = Model.headerJellyfin(auth.apiKey)
+    root.enqueue({
+      kind: "jellyfin-identity",
+      serviceId: service.id,
+      url: Model.jellyfinSystemInfoUrl(service.url),
+      headerText: header
+    })
+    root.enqueue({
+      kind: "jellyfin-sessions",
+      serviceId: service.id,
+      url: Model.jellyfinSessionsUrl(service.url),
+      headerText: header
+    })
+    root.enqueue({
+      kind: "jellyfin-users",
+      serviceId: service.id,
+      url: Model.jellyfinUsersUrl(service.url),
+      headerText: header
+    })
+  }
+
+  function enqueueJellyfinLibrary(service, userId) {
+    var auth = root.cred(service.id)
+    var header = Model.headerJellyfin(auth.apiKey)
+    root.enqueue({
+      kind: "jellyfin-ondeck",
+      serviceId: service.id,
+      url: Model.jellyfinResumeUrl(service.url, userId, root.pageSize),
+      headerText: header
+    })
+    root.enqueue({
+      kind: "jellyfin-recent",
+      serviceId: service.id,
+      url: Model.jellyfinLatestUrl(service.url, userId, root.pageSize),
+      headerText: header
+    })
+  }
+
+  function enqueueJellyfinArt(service, snap) {
+    var auth = root.cred(service.id)
+    var header = Model.headerJellyfin(auth.apiKey)
+    var lists = [snap.sessions || [], snap.onDeck || [], snap.recent || []]
+    var seen = {}
+    for (var l = 0; l < lists.length; l++) {
+      for (var i = 0; i < lists[l].length; i++) {
+        var item = lists[l][i] || {}
+        var id = String(item.id || "")
+        if (!id || seen[id]) continue
+        seen[id] = true
+        var url = Model.jellyfinArtUrl(service.url, item.artItemId || id, item.artType)
+        if (!url) continue
+        root.enqueueArt({
+          kind: "poster",
+          serviceId: service.id,
+          url: url,
+          headerText: header,
+          outputPath: Model.jellyfinCachePath(root.cacheDir, service.id, id),
+          image: true
+        })
+      }
+    }
+  }
+
   function enqueuePoll(scope) {
     if (root.reqQueue.length) return
     var downloaders = scope === "downloaders"
@@ -783,6 +897,7 @@ Item {
       else if (svc.kind === "qbittorrent") root.enqueueQbit(svc)
       else if (downloaders) return
       else if (svc.kind === "plex") root.enqueuePlex(svc)
+      else if (svc.kind === "jellyfin") root.enqueueJellyfin(svc)
       else root.enqueueGeneric(svc)
     }
     for (var i = 0; i < root.services.length; i++) {
@@ -904,6 +1019,13 @@ Item {
   }
 
   function plexPath(serviceId, itemId) {
+    return Model.plexCachePath(root.cacheDir, serviceId, itemId)
+  }
+
+  function mediaPath(serviceId, itemId) {
+    var service = root.serviceById(serviceId)
+    if (service && service.kind === "jellyfin")
+      return Model.jellyfinCachePath(root.cacheDir, serviceId, itemId)
     return Model.plexCachePath(root.cacheDir, serviceId, itemId)
   }
 

@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "author": "luccast",
   "license": "MIT",
-  "description": "The Omarchy Arr stack desktop panel for locally hosted services. With live notifications and controls for Sonarr, Radarr, Plex, SABnzbd, qBittorrent, and more.",
+  "description": "The Omarchy Arr stack desktop panel for locally hosted services. With live notifications and controls for Sonarr, Radarr, Jellyfin, Plex, SABnzbd, qBittorrent, and more.",
   "kinds": [
     "service",
     "bar-widget"

@@ -200,9 +200,9 @@ Panel {
     return Model.fileUrl(path, rev && rev[path])
   }
 
-  function plexSource(serviceId, itemId) {
+  function mediaSource(serviceId, itemId) {
     if (!root.service || !itemId) return ""
-    var path = root.service.plexPath(serviceId, itemId)
+    var path = root.service.mediaPath(serviceId, itemId)
     var rev = root.service.artRev
     return Model.fileUrl(path, rev && rev[path])
   }
@@ -810,8 +810,8 @@ Panel {
                   CalendarCard {
                     required property var modelData
                     item: modelData
-                    posterUrl: root.plexSource(modelData.serviceId, modelData.posterId)
-                    fanartUrl: root.plexSource(modelData.serviceId, modelData.posterId)
+                    posterUrl: root.mediaSource(modelData.serviceId, modelData.posterId)
+                    fanartUrl: root.mediaSource(modelData.serviceId, modelData.posterId)
                     compact: root.compact
                     fontFamily: root.contentFontFamily
                   }
@@ -823,8 +823,8 @@ Panel {
                   CalendarCard {
                     required property var modelData
                     item: modelData
-                    posterUrl: root.plexSource(modelData.serviceId, modelData.posterId)
-                    fanartUrl: root.plexSource(modelData.serviceId, modelData.posterId)
+                    posterUrl: root.mediaSource(modelData.serviceId, modelData.posterId)
+                    fanartUrl: root.mediaSource(modelData.serviceId, modelData.posterId)
                     compact: root.compact
                     fontFamily: root.contentFontFamily
                   }
@@ -947,7 +947,7 @@ Panel {
                 Column {
                   width: parent.width
                   spacing: Style.space(8)
-                  visible: root.detailSnap && root.detailSnap.kind === "plex"
+                  visible: root.detailSnap && Model.isMediaKind(root.detailSnap.kind)
                     && (root.detailSnap.sessions || []).length > 0
                   height: visible ? implicitHeight : 0
 
@@ -958,7 +958,7 @@ Panel {
                   }
 
                   Repeater {
-                    model: root.detailSnap && root.detailSnap.kind === "plex"
+                    model: root.detailSnap && Model.isMediaKind(root.detailSnap.kind)
                       ? (root.detailSnap.sessions || []) : []
 
                   Column {
@@ -1008,7 +1008,7 @@ Panel {
                 Column {
                   width: parent.width
                   spacing: Style.space(8)
-                  visible: root.detailSnap && root.detailSnap.kind === "plex"
+                  visible: root.detailSnap && Model.isMediaKind(root.detailSnap.kind)
                     && (root.detailSnap.onDeck || []).length > 0
                   height: visible ? implicitHeight : 0
 
@@ -1019,14 +1019,14 @@ Panel {
                   }
 
                   Repeater {
-                    model: root.detailSnap && root.detailSnap.kind === "plex"
+                    model: root.detailSnap && Model.isMediaKind(root.detailSnap.kind)
                       ? (root.detailSnap.onDeck || []) : []
 
                   CalendarCard {
                     required property var modelData
                     item: modelData
-                    posterUrl: root.detailSnap ? root.plexSource(root.detailSnap.id, modelData.id) : ""
-                    fanartUrl: root.detailSnap ? root.plexSource(root.detailSnap.id, modelData.id) : ""
+                    posterUrl: root.detailSnap ? root.mediaSource(root.detailSnap.id, modelData.id) : ""
+                    fanartUrl: root.detailSnap ? root.mediaSource(root.detailSnap.id, modelData.id) : ""
                     compact: root.compact
                     fontFamily: root.contentFontFamily
                   }
@@ -1036,7 +1036,7 @@ Panel {
                 Column {
                   width: parent.width
                   spacing: Style.space(8)
-                  visible: root.detailSnap && root.detailSnap.kind === "plex"
+                  visible: root.detailSnap && Model.isMediaKind(root.detailSnap.kind)
                     && (root.detailSnap.recent || []).length > 0
                   height: visible ? implicitHeight : 0
 
@@ -1047,14 +1047,14 @@ Panel {
                   }
 
                   Repeater {
-                    model: root.detailSnap && root.detailSnap.kind === "plex"
+                    model: root.detailSnap && Model.isMediaKind(root.detailSnap.kind)
                       ? (root.detailSnap.recent || []) : []
 
                     CalendarCard {
                       required property var modelData
                       item: modelData
-                      posterUrl: root.detailSnap ? root.plexSource(root.detailSnap.id, modelData.id) : ""
-                      fanartUrl: root.detailSnap ? root.plexSource(root.detailSnap.id, modelData.id) : ""
+                      posterUrl: root.detailSnap ? root.mediaSource(root.detailSnap.id, modelData.id) : ""
+                      fanartUrl: root.detailSnap ? root.mediaSource(root.detailSnap.id, modelData.id) : ""
                       compact: root.compact
                       fontFamily: root.contentFontFamily
                     }
@@ -1064,12 +1064,12 @@ Panel {
                 Column {
                   width: parent.width
                   spacing: Style.space(8)
-                  visible: root.detailSnap && root.detailSnap.kind !== "plex"
+                  visible: root.detailSnap && !Model.isMediaKind(root.detailSnap.kind)
                     && ((root.detailQueueModel || []).length > 0 || root.detailPager.hasPrev || root.detailPager.hasNext)
                   height: visible ? implicitHeight : 0
 
                   Repeater {
-                    model: root.detailSnap && root.detailSnap.kind === "plex" ? [] : root.detailQueueModel
+                    model: root.detailSnap && Model.isMediaKind(root.detailSnap.kind) ? [] : root.detailQueueModel
 
                   CursorSurface {
                     id: qRow
@@ -1155,7 +1155,7 @@ Panel {
                 }
 
                 Row {
-                  visible: root.detailSnap && root.detailSnap.kind !== "plex"
+                  visible: root.detailSnap && !Model.isMediaKind(root.detailSnap.kind)
                     && (root.detailPager.hasPrev || root.detailPager.hasNext)
                   width: parent.width
                   spacing: Style.space(6)
@@ -1241,12 +1241,12 @@ Panel {
                 Column {
                   width: parent.width
                   spacing: Style.space(8)
-                  visible: root.detailSnap && root.detailSnap.kind !== "plex"
+                  visible: root.detailSnap && !Model.isMediaKind(root.detailSnap.kind)
                     && root.detailSnap.calendar && root.detailSnap.calendar.length > 0
                   height: visible ? implicitHeight : 0
 
                   Repeater {
-                    model: root.detailSnap && root.detailSnap.kind !== "plex" && root.detailSnap.calendar
+                    model: root.detailSnap && !Model.isMediaKind(root.detailSnap.kind) && root.detailSnap.calendar
                       ? Model.groupedCalendar(root.detailSnap.calendar) : []
 
                   Column {

@@ -103,10 +103,14 @@ twoKeys = Model.setCredential(twoKeys, twoSonarr.services[1].id, { apiKey: "bbb"
 assert.equal(Model.credentialFor(twoKeys, twoSonarr.services[0].id).apiKey, "aaa", "first sonarr key")
 assert.equal(Model.credentialFor(twoKeys, twoSonarr.services[1].id).apiKey, "bbb", "second sonarr key")
 
-assert.ok(Model.kindNeedsApiKey("sonarr") && Model.kindNeedsApiKey("radarr") && Model.kindNeedsApiKey("sabnzbd") && Model.kindNeedsApiKey("plex"), "arr/sab/plex need api key")
+assert.ok(Model.kindNeedsApiKey("sonarr") && Model.kindNeedsApiKey("radarr") && Model.kindNeedsApiKey("sabnzbd") && Model.kindNeedsApiKey("plex") && Model.kindNeedsApiKey("jellyfin"), "arr/sab/media need api key")
 assert.ok(!Model.kindNeedsApiKey("generic") && !Model.kindNeedsApiKey("qbittorrent"), "generic/qbit no api key")
 assert.ok(Model.kindNeedsUserPass("qbittorrent"), "qbit needs user/pass")
 assert.ok(!Model.kindNeedsUserPass("sonarr"), "sonarr no user/pass")
+assert.ok(Model.kindNeedsUsername("jellyfin"), "jellyfin accepts profile name")
+assert.ok(!Model.kindNeedsUserPass("jellyfin"), "jellyfin profile needs no password")
+assert.ok(Model.isMediaKind("plex") && Model.isMediaKind("jellyfin"), "media kinds")
+assert.equal(Model.defaultUrlForKind("jellyfin"), "http://127.0.0.1:8096", "jellyfin default url")
 assert.equal(Model.uniqueServiceName([], "sonarr"), "Sonarr", "first sonarr name")
 assert.equal(Model.uniqueServiceName(s1.services, "sonarr"), "Sonarr 2", "second sonarr name")
 assert.equal(Model.uniqueServiceName(twoSonarr.services, "sonarr"), "Sonarr 2", "third default skips 4K custom")
@@ -489,13 +493,23 @@ eq([
   [Model.plexOnDeckUrl("http://p:32400"), "http://p:32400/library/onDeck", "plex ondeck url"],
   [Model.plexArtUrl("http://p:32400", "/library/metadata/1/thumb/2"), "http://p:32400/library/metadata/1/thumb/2?width=720&height=405&minSize=1", "plex relative art"],
   [Model.plexArtUrl("http://p:32400", "https://plex.tv/photo.jpg"), "", "plex skips remote art"],
-  [Model.plexCachePath("/tmp/omarr", "svc-1", "99"), "/tmp/omarr/svc-1-99-plex-hd.jpg", "plex cache path"]
+  [Model.plexCachePath("/tmp/omarr", "svc-1", "99"), "/tmp/omarr/svc-1-99-plex-hd.jpg", "plex cache path"],
+  [Model.jellyfinSystemInfoUrl("http://j:8096"), "http://j:8096/System/Info", "jellyfin system url"],
+  [Model.jellyfinUsersUrl("http://j:8096"), "http://j:8096/Users?isDisabled=false", "jellyfin users url"],
+  [Model.jellyfinSessionsUrl("http://j:8096"), "http://j:8096/Sessions?activeWithinSeconds=300", "jellyfin sessions url"],
+  [Model.jellyfinArtUrl("http://j:8096", "abc", "Backdrop"), "http://j:8096/Items/abc/Images/Backdrop?maxWidth=720&maxHeight=405&quality=90", "jellyfin art url"],
+  [Model.jellyfinCachePath("/tmp/omarr", "svc-2", "abc"), "/tmp/omarr/svc-2-abc-jellyfin-hd.jpg", "jellyfin cache path"]
 ])
 has([
   [Model.plexRecentlyAddedUrl("http://p:32400"), "/library/recentlyAdded", "plex recent url"],
   [Model.plexRecentlyAddedUrl("http://p:32400", 10), "X-Plex-Container-Size=10", "plex recent size"],
   [Model.headerPlex("tok"), "X-Plex-Token: tok\n", "plex token header"], [Model.headerPlex("tok"), "Accept: application/json", "plex json accept"],
-  [Model.curlHeaderConfig(Model.headerPlex("tok")), "header = \"X-Plex-Token: tok\"", "curl config token"]
+  [Model.curlHeaderConfig(Model.headerPlex("tok")), "header = \"X-Plex-Token: tok\"", "curl config token"],
+  [Model.headerJellyfin("key"), "Authorization: MediaBrowser", "jellyfin auth scheme"],
+  [Model.headerJellyfin("key"), "Token=\"key\"", "jellyfin token"],
+  [Model.jellyfinResumeUrl("http://j:8096", "user id", 10), "userId=user%20id", "jellyfin resume user"],
+  [Model.jellyfinResumeUrl("http://j:8096", "u", 10), "limit=10", "jellyfin resume limit"],
+  [Model.jellyfinLatestUrl("http://j:8096", "u", 10), "/Items/Latest?", "jellyfin latest url"]
 ])
 assert.ok(Model.headerIsConfig(Model.headerPlex("tok")), "plex headers need curl config")
 assert.ok(!Model.headerIsConfig(Model.headerApiKey("k")), "api key is one header")
@@ -597,6 +611,78 @@ assert.equal(plexNow[0].title, "Film", "plex watching title")
 assert.ok(plexNow[0].subtitle.indexOf("del") !== -1, "plex watching user")
 assert.equal(plexNow[0].progress, 0.25, "plex session progress")
 
+// Synthetic payloads keep personal server and library data out of the test suite.
+var jellyfinIdent = Model.parseJellyfinIdentity(JSON.stringify({
+  ServerName: "Test Server", Version: "1.2.3", ProductName: "Jellyfin Server"
+}))
+assert.equal(jellyfinIdent.name, "Test Server", "jellyfin server name")
+assert.equal(jellyfinIdent.version, "1.2.3", "jellyfin version")
+assert.ok(jellyfinIdent.healthy === true, "jellyfin identity ok")
+
+var jellyfinUsers = JSON.stringify([
+  { Id: "disabled-user", Name: "Disabled User", Policy: { IsDisabled: true } },
+  { Id: "primary-user", Name: "Primary User", Policy: { IsDisabled: false } },
+  { Id: "guest-user", Name: "Guest User", Policy: { IsDisabled: false } }
+])
+assert.equal(Model.pickJellyfinUser(jellyfinUsers, "pRiMaRy UsEr").id, "primary-user", "jellyfin profile match")
+assert.equal(Model.pickJellyfinUser(jellyfinUsers, "").id, "primary-user", "jellyfin first enabled profile")
+assert.equal(Model.pickJellyfinUser(jellyfinUsers, "missing").id, "", "jellyfin missing profile")
+
+var jellyfinDeck = Model.parseJellyfinLibrary(JSON.stringify({ Items: [{
+  Id: "episode-id",
+  Type: "Episode",
+  Name: "First Episode",
+  SeriesName: "Example Series",
+  SeriesId: "series-id",
+  SeriesPrimaryImageTag: "series-tag",
+  ParentIndexNumber: 1,
+  IndexNumber: 1,
+  RunTimeTicks: 40000000,
+  CommunityRating: 8.4,
+  UserData: { PlaybackPositionTicks: 10000000, PlayedPercentage: 25, Played: false }
+}] }), 20)
+assert.equal(jellyfinDeck.length, 1, "jellyfin deck len")
+assert.equal(jellyfinDeck[0].title, "Example Series", "jellyfin episode uses series title")
+assert.ok(jellyfinDeck[0].subtitle.indexOf("S01E01") !== -1, "jellyfin episode code")
+assert.equal(jellyfinDeck[0].progress, 0.25, "jellyfin resume progress")
+assert.equal(jellyfinDeck[0].artItemId, "series-id", "jellyfin series artwork")
+assert.equal(jellyfinDeck[0].rating, 8.4, "jellyfin community rating")
+
+var jellyfinEpisodeStill = Model.parseJellyfinLibrary(JSON.stringify([{
+  Id: "episode-still-id",
+  Type: "Episode",
+  Name: "Last Episode",
+  SeriesName: "Example Series",
+  SeriesId: "series-id",
+  SeriesPrimaryImageTag: "series-tag",
+  ImageTags: { Primary: "episode-tag" }
+}]), 20)
+assert.equal(jellyfinEpisodeStill[0].artItemId, "episode-still-id", "jellyfin prefers episode still")
+assert.equal(jellyfinEpisodeStill[0].artType, "Primary", "jellyfin episode still type")
+
+var jellyfinRecent = Model.parseJellyfinLibrary(JSON.stringify([{
+  Id: "movie-id",
+  Type: "Movie",
+  Name: "Example Movie",
+  ProductionYear: 2000,
+  BackdropImageTags: ["backdrop-tag"],
+  UserData: { Played: true }
+}]), 20)
+assert.equal(jellyfinRecent[0].subtitle, "2000", "jellyfin movie year")
+assert.equal(jellyfinRecent[0].artItemId, "movie-id", "jellyfin movie artwork")
+assert.equal(jellyfinRecent[0].artType, "Backdrop", "jellyfin prefers backdrop")
+assert.ok(jellyfinRecent[0].watched === true, "jellyfin watched state")
+
+var jellyfinNow = Model.parseJellyfinSessions(JSON.stringify([
+  { UserName: "Test User", DeviceName: "Test Player", PlayState: { PositionTicks: 100, IsPaused: true }, NowPlayingItem: {
+    Id: "now-id", Type: "Movie", Name: "Example Movie", RunTimeTicks: 400
+  } },
+  { UserName: "Idle User", DeviceName: "Idle Device" }
+]), 20)
+assert.equal(jellyfinNow.length, 1, "jellyfin active session")
+assert.equal(jellyfinNow[0].progress, 0.25, "jellyfin session progress")
+assert.ok(jellyfinNow[0].subtitle.indexOf("Test User · Test Player · Paused") !== -1, "jellyfin session context")
+
 var snap = Model.emptySnapshot({ id: "svc-1", kind: "sonarr", name: "Sonarr", url: "http://s:8989", group: "Media" })
 assert.equal(snap.health, "unknown", "empty health")
 var up = Model.applyHttpHealth(snap, 200)
@@ -608,7 +694,7 @@ assert.equal(unauthorized.statusText, "HTTP 401", "http 401 text")
 
 ;[
   ["arr-status", true], ["sab-queue", true], ["generic", true],
-  ["qbit-torrents", true], ["plex-identity", true],
+  ["qbit-torrents", true], ["plex-identity", true], ["jellyfin-identity", true],
   ["plex-ondeck", false], ["plex-recent", false], ["plex-sessions", false],
   ["arr-calendar", false], ["arr-queue", false], ["arr-wanted", false],
   ["arr-history", false], ["sab-history", false], ["poster", false]
@@ -686,6 +772,19 @@ assert.ok(Model.shouldNotify(added, { notifyGrab: true }, []) === true, "notify 
 assert.ok(Model.shouldNotify(added, { notifyGrab: false }, []) === false, "plex added flag off")
 assert.ok(Model.toastParts(added).title.indexOf("added") !== -1, "plex added toast")
 
+var jellyfinSnap = Model.emptySnapshot({ id: "j", kind: "jellyfin", name: "Jellyfin" })
+jellyfinSnap.health = "up"
+jellyfinSnap.sessions = jellyfinNow
+jellyfinSnap.onDeck = jellyfinDeck
+jellyfinSnap.recent = jellyfinRecent
+assert.ok(Model.fleetLine(jellyfinSnap).indexOf("Watching") !== -1, "jellyfin fleet watching")
+var jellyfinFeed = Model.mergeNow([jellyfinSnap])
+assert.equal(jellyfinFeed.sessions[0].kind, "jellyfin", "jellyfin merged session")
+var jellyfinPrev = Model.emptySnapshot({ id: "j", kind: "jellyfin", name: "Jellyfin" })
+jellyfinPrev.health = "up"
+var jellyfinEvents = Model.eventsFromPoll(jellyfinPrev, jellyfinSnap, { id: "j", kind: "jellyfin", notifyGrab: true })
+assert.ok(jellyfinEvents.some(function(e) { return e.type === "library-added" }), "jellyfin added event")
+
 var badge = Model.barBadge([sonarrSnap, radarrSnap, sabSnap])
 assert.ok(badge.urgent === true, "badge urgent when down")
 assert.ok(badge.count >= 1, "badge count")
@@ -759,7 +858,8 @@ assert.equal(Model.scanHitsForPort(8080).length, 2, "port 8080 hits both downloa
 eq([
   [Model.scanUrl("127.0.0.1", 8989), "http://127.0.0.1:8989", "scan url"], [Model.kindFromPort(8989), "sonarr", "port sonarr"],
   [Model.kindFromPort(7878), "radarr", "port radarr"], [Model.kindFromPort(8080), "generic", "port 8080 ambiguous"],
-  [Model.kindFromPort(32400), "plex", "port plex"], [Model.defaultUrlForKind("plex"), "http://127.0.0.1:32400", "default plex url"],
+  [Model.kindFromPort(8096), "jellyfin", "port jellyfin"], [Model.kindFromPort(32400), "plex", "port plex"],
+  [Model.defaultUrlForKind("plex"), "http://127.0.0.1:32400", "default plex url"],
   [Model.kindLabel("plex"), "Plex", "plex label"], [Model.formatSpeed(1536), "1.5 KB/s", "speed"],
   [Model.formatBytes(1048576), "1.0 MB", "bytes"], [Model.kindLabel("qbittorrent"), "qBittorrent", "kind label"]
 ])

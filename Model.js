@@ -7,7 +7,7 @@ var DOWNLOAD_POLL_MS = 2000
 var LIST_PAGE_SIZE = 20
 var PAGE_SIZE_MIN = 5
 var PAGE_SIZE_MAX = 50
-var KINDS = ["generic", "sonarr", "radarr", "sabnzbd", "qbittorrent", "plex"]
+var KINDS = ["generic", "sonarr", "radarr", "sabnzbd", "qbittorrent", "plex", "jellyfin"]
 
 var KIND_DEFAULTS = {
   generic: { name: "Service", group: "Other", port: 80 },
@@ -15,7 +15,8 @@ var KIND_DEFAULTS = {
   radarr: { name: "Radarr", group: "Media", port: 7878 },
   sabnzbd: { name: "SABnzbd", group: "Downloads", port: 8080 },
   qbittorrent: { name: "qBittorrent", group: "Downloads", port: 8080 },
-  plex: { name: "Plex", group: "Media", port: 32400 }
+  plex: { name: "Plex", group: "Media", port: 32400 },
+  jellyfin: { name: "Jellyfin", group: "Media", port: 8096 }
 }
 
 var SCAN_SERVICES = [
@@ -23,7 +24,7 @@ var SCAN_SERVICES = [
   { kind: "radarr", port: 7878, name: "Radarr" },
   { kind: "sabnzbd", port: 8080, name: "SABnzbd" },
   { kind: "qbittorrent", port: 8080, name: "qBittorrent" },
-  { kind: "generic", port: 8096, name: "Jellyfin" },
+  { kind: "jellyfin", port: 8096, name: "Jellyfin" },
   { kind: "plex", port: 32400, name: "Plex" },
   { kind: "generic", port: 8123, name: "Home Assistant" },
   { kind: "generic", port: 9696, name: "Prowlarr" },
@@ -70,11 +71,21 @@ function normalizeGroup(value, fallback) {
 
 function kindNeedsApiKey(kind) {
   var k = kindOf(kind)
-  return k === "sonarr" || k === "radarr" || k === "sabnzbd" || k === "plex"
+  return k === "sonarr" || k === "radarr" || k === "sabnzbd" || k === "plex" || k === "jellyfin"
 }
 
 function kindNeedsUserPass(kind) {
   return kindOf(kind) === "qbittorrent"
+}
+
+function kindNeedsUsername(kind) {
+  var k = kindOf(kind)
+  return k === "qbittorrent" || k === "jellyfin"
+}
+
+function isMediaKind(kind) {
+  var k = kindOf(kind)
+  return k === "plex" || k === "jellyfin"
 }
 
 var ICON_SLUGS = [
@@ -1043,6 +1054,12 @@ function headerPlex(token) {
   return "X-Plex-Token: " + String(token || "") + "\nAccept: application/json\nX-Plex-Client-Identifier: " + PLUGIN_ID + "\n"
 }
 
+function headerJellyfin(token) {
+  var value = String(token || "").replace(/[\r\n"]/g, "")
+  return "Authorization: MediaBrowser Client=\"omARR\", Device=\"Omarchy\", DeviceId=\"" + PLUGIN_ID
+    + "\", Version=\"1\", Token=\"" + value + "\"\nAccept: application/json\n"
+}
+
 function curlHeaderConfig(headerText) {
   var lines = String(headerText || "").split(/\r?\n/)
   var out = []
@@ -1106,6 +1123,44 @@ function fanartCachePath(cacheDir, serviceId, itemId) {
 
 function plexCachePath(cacheDir, serviceId, itemId) {
   return artCachePath(cacheDir, serviceId, itemId, "plex")
+}
+
+function jellyfinSystemInfoUrl(base) {
+  return apiUrl(base, "/System/Info")
+}
+
+function jellyfinUsersUrl(base) {
+  return apiUrl(base, "/Users?isDisabled=false")
+}
+
+function jellyfinSessionsUrl(base) {
+  return apiUrl(base, "/Sessions?activeWithinSeconds=300")
+}
+
+function jellyfinResumeUrl(base, userId, pageSize) {
+  return apiUrl(base, "/UserItems/Resume?userId=" + encodeURIComponent(String(userId || ""))
+    + "&limit=" + clampPageSize(pageSize)
+    + "&includeItemTypes=Movie%2CEpisode&fields=PrimaryImageAspectRatio%2CDateCreated"
+    + "&enableUserData=true&enableImages=true&enableImageTypes=Primary%2CBackdrop")
+}
+
+function jellyfinLatestUrl(base, userId, pageSize) {
+  return apiUrl(base, "/Items/Latest?userId=" + encodeURIComponent(String(userId || ""))
+    + "&limit=" + clampPageSize(pageSize)
+    + "&includeItemTypes=Movie%2CEpisode&fields=PrimaryImageAspectRatio%2CDateCreated"
+    + "&enableUserData=true&enableImages=true&enableImageTypes=Primary%2CBackdrop&groupItems=false")
+}
+
+function jellyfinArtUrl(base, itemId, imageType) {
+  var id = String(itemId || "")
+  if (!id) return ""
+  var type = String(imageType || "Primary") === "Backdrop" ? "Backdrop" : "Primary"
+  return apiUrl(base, "/Items/" + encodeURIComponent(id) + "/Images/" + type
+    + "?maxWidth=720&maxHeight=405&quality=90")
+}
+
+function jellyfinCachePath(cacheDir, serviceId, itemId) {
+  return artCachePath(cacheDir, serviceId, itemId, "jellyfin")
 }
 
 function fileUrl(path, rev) {
@@ -1184,6 +1239,108 @@ function parsePlexSessions(raw, pageSize) {
   return capList(out, pageSize)
 }
 
+function parseJellyfinIdentity(raw) {
+  var data = parseJson(raw, null)
+  if (!data || typeof data !== "object") return { version: "", name: "", healthy: false }
+  return {
+    version: String(data.Version || data.version || ""),
+    name: String(data.ServerName || data.serverName || data.ProductName || data.productName || ""),
+    healthy: true
+  }
+}
+
+function pickJellyfinUser(raw, preferredName) {
+  var users = parseJson(raw, [])
+  if (!Array.isArray(users)) users = []
+  var preferred = String(preferredName || "").replace(/^\s+|\s+$/g, "").toLowerCase()
+  var first = null
+  for (var i = 0; i < users.length; i++) {
+    var row = users[i] || {}
+    if (row.Policy && row.Policy.IsDisabled === true) continue
+    var user = { id: String(row.Id || ""), name: String(row.Name || "") }
+    if (!user.id) continue
+    if (!first) first = user
+    if (preferred && user.name.toLowerCase() === preferred) return user
+  }
+  if (preferred) return { id: "", name: String(preferredName || "") }
+  return first || { id: "", name: "" }
+}
+
+function jellyfinItemImage(row) {
+  var item = row && typeof row === "object" ? row : {}
+  var backdrops = Array.isArray(item.BackdropImageTags) ? item.BackdropImageTags : []
+  var parentBackdrops = Array.isArray(item.ParentBackdropImageTags) ? item.ParentBackdropImageTags : []
+  var images = item.ImageTags && typeof item.ImageTags === "object" ? item.ImageTags : {}
+  if (backdrops.length && item.Id) return { id: String(item.Id), type: "Backdrop" }
+  if (parentBackdrops.length && item.ParentBackdropItemId)
+    return { id: String(item.ParentBackdropItemId), type: "Backdrop" }
+  if (images.Primary && item.Id) return { id: String(item.Id), type: "Primary" }
+  if (item.ParentPrimaryImageItemId) return { id: String(item.ParentPrimaryImageItemId), type: "Primary" }
+  if (item.SeriesId && item.SeriesPrimaryImageTag) return { id: String(item.SeriesId), type: "Primary" }
+  return { id: String(item.Id || ""), type: "Primary" }
+}
+
+function parseJellyfinItem(row, session) {
+  var item = row && typeof row === "object" ? row : {}
+  var isEp = String(item.Type || "").toLowerCase() === "episode"
+  var title = isEp ? String(item.SeriesName || item.Name || "") : String(item.Name || "")
+  var subtitle = isEp
+    ? episodeCode(item.ParentIndexNumber, item.IndexNumber) + (item.Name ? " " + item.Name : "")
+    : (item.ProductionYear ? String(item.ProductionYear) : "")
+  var userData = item.UserData && typeof item.UserData === "object" ? item.UserData : {}
+  var duration = Number(item.RunTimeTicks) || 0
+  var position = Number(userData.PlaybackPositionTicks) || 0
+  var sessionRow = session && typeof session === "object" ? session : null
+  if (sessionRow && sessionRow.PlayState) position = Number(sessionRow.PlayState.PositionTicks) || 0
+  var progress = Number(userData.PlayedPercentage) / 100
+  if (!(progress > 0) && duration > 0) progress = position / duration
+  progress = Math.max(0, Math.min(1, Number(progress) || 0))
+  if (sessionRow) {
+    var who = [sessionRow.UserName, sessionRow.DeviceName || sessionRow.Client].filter(Boolean).join(" · ")
+    if (sessionRow.PlayState && sessionRow.PlayState.IsPaused) who = who ? who + " · Paused" : "Paused"
+    if (who) subtitle = subtitle ? subtitle + " · " + who : who
+  }
+  var art = jellyfinItemImage(item)
+  return {
+    id: String(item.Id || ""),
+    title: title,
+    subtitle: subtitle,
+    artItemId: art.id,
+    artType: art.type,
+    rating: Number(item.CommunityRating) || 0,
+    ratingSource: "",
+    progress: progress,
+    watched: userData.Played === true || progress >= 1,
+    kind: "jellyfin"
+  }
+}
+
+function jellyfinRecords(raw) {
+  var data = parseJson(raw, [])
+  if (Array.isArray(data)) return data
+  if (data && Array.isArray(data.Items)) return data.Items
+  return []
+}
+
+function parseJellyfinLibrary(raw, pageSize) {
+  var records = jellyfinRecords(raw)
+  var out = []
+  for (var i = 0; i < records.length; i++) out.push(parseJellyfinItem(records[i], null))
+  return capList(out, pageSize)
+}
+
+function parseJellyfinSessions(raw, pageSize) {
+  var sessions = parseJson(raw, [])
+  if (!Array.isArray(sessions)) sessions = []
+  var out = []
+  for (var i = 0; i < sessions.length; i++) {
+    var session = sessions[i] || {}
+    if (!session.NowPlayingItem) continue
+    out.push(parseJellyfinItem(session.NowPlayingItem, session))
+  }
+  return capList(out, pageSize)
+}
+
 function emptySnapshot(service) {
   var svc = service && typeof service === "object" ? service : {}
   return {
@@ -1229,7 +1386,7 @@ function applyHttpHealth(snapshot, statusCode) {
 function isHealthKind(kind) {
   var k = String(kind || "")
   return k === "arr-status" || k === "sab-queue" || k === "generic"
-    || k === "qbit-torrents" || k === "qbit-login" || k === "plex-identity"
+    || k === "qbit-torrents" || k === "qbit-login" || k === "plex-identity" || k === "jellyfin-identity"
 }
 
 function decideHealth(previousHealth, statusCode, missCount) {
@@ -1443,29 +1600,29 @@ function mergeNow(snapshots) {
         })
       }
     }
-    var plexLists = [
+    var mediaLists = [
       { src: snap.sessions, dest: sessions },
       { src: snap.onDeck, dest: onDeck },
       { src: snap.recent, dest: recent }
     ]
-    for (var p = 0; p < plexLists.length; p++) {
-      var plexItems = toList(plexLists[p].src)
-      for (var x = 0; x < plexItems.length; x++) {
-        var plex = plexItems[x] || {}
-        plexLists[p].dest.push({
-          id: snap.id + ":" + plex.id,
-          posterId: plex.id,
+    for (var p = 0; p < mediaLists.length; p++) {
+      var mediaItems = toList(mediaLists[p].src)
+      for (var x = 0; x < mediaItems.length; x++) {
+        var media = mediaItems[x] || {}
+        mediaLists[p].dest.push({
+          id: snap.id + ":" + media.id,
+          posterId: media.id,
           serviceId: snap.id,
           serviceName: snap.name,
           kind: snap.kind,
-          title: plex.title,
-          subtitle: plex.subtitle,
-          artPath: plex.artPath || "",
-          thumbPath: plex.thumbPath || "",
-          rating: plex.rating || 0,
-          ratingSource: plex.ratingSource || "",
-          progress: plex.progress || 0,
-          watched: plex.watched === true
+          title: media.title,
+          subtitle: media.subtitle,
+          artPath: media.artPath || "",
+          thumbPath: media.thumbPath || "",
+          rating: media.rating || 0,
+          ratingSource: media.ratingSource || "",
+          progress: media.progress || 0,
+          watched: media.watched === true
         })
       }
     }
@@ -1499,7 +1656,7 @@ function fleetLine(snapshot) {
   var snap = snapshot || emptySnapshot({})
   if (snap.health === "down") return "down"
   if (snap.health === "unknown") return "waiting"
-  if (snap.kind === "plex") {
+  if (isMediaKind(snap.kind)) {
     var watching = Array.isArray(snap.sessions) ? snap.sessions : []
     if (watching.length === 1) return "Watching " + (watching[0].title || "")
     if (watching.length > 1) return watching.length + " watching"
@@ -1674,7 +1831,7 @@ function eventsFromPoll(prev, next, service) {
       })
     }
   }
-  if (after.kind === "plex") {
+  if (isMediaKind(after.kind)) {
     var prevRecent = {}
     var beforeRecent = Array.isArray(before.recent) ? before.recent : []
     for (var r = 0; r < beforeRecent.length; r++) prevRecent[String(beforeRecent[r].id)] = true
@@ -1846,6 +2003,8 @@ if (typeof module !== "undefined" && module.exports) {
     normalizeGroup: normalizeGroup,
     kindNeedsApiKey: kindNeedsApiKey,
     kindNeedsUserPass: kindNeedsUserPass,
+    kindNeedsUsername: kindNeedsUsername,
+    isMediaKind: isMediaKind,
     ICON_SLUGS: ICON_SLUGS,
     iconSlugs: iconSlugs,
     iconPageUrl: iconPageUrl,
@@ -1912,6 +2071,7 @@ if (typeof module !== "undefined" && module.exports) {
     qbitStopUrl: qbitStopUrl,
     qbitStartUrl: qbitStartUrl,
     headerPlex: headerPlex,
+    headerJellyfin: headerJellyfin,
     curlHeaderConfig: curlHeaderConfig,
     headerIsConfig: headerIsConfig,
     plexIdentityUrl: plexIdentityUrl,
@@ -1922,9 +2082,20 @@ if (typeof module !== "undefined" && module.exports) {
     posterCachePath: posterCachePath,
     fanartCachePath: fanartCachePath,
     plexCachePath: plexCachePath,
+    jellyfinSystemInfoUrl: jellyfinSystemInfoUrl,
+    jellyfinUsersUrl: jellyfinUsersUrl,
+    jellyfinSessionsUrl: jellyfinSessionsUrl,
+    jellyfinResumeUrl: jellyfinResumeUrl,
+    jellyfinLatestUrl: jellyfinLatestUrl,
+    jellyfinArtUrl: jellyfinArtUrl,
+    jellyfinCachePath: jellyfinCachePath,
     parsePlexIdentity: parsePlexIdentity,
     parsePlexLibrary: parsePlexLibrary,
     parsePlexSessions: parsePlexSessions,
+    parseJellyfinIdentity: parseJellyfinIdentity,
+    pickJellyfinUser: pickJellyfinUser,
+    parseJellyfinLibrary: parseJellyfinLibrary,
+    parseJellyfinSessions: parseJellyfinSessions,
     emptySnapshot: emptySnapshot,
     applyHttpHealth: applyHttpHealth,
     isHealthKind: isHealthKind,
