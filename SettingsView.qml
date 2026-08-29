@@ -252,36 +252,42 @@ Column {
 
   Column {
     width: parent.width
-    spacing: Style.space(8)
+    spacing: Style.space(12)
     visible: root.mode === "list" && root.listTab === "settings"
     height: visible ? implicitHeight : 0
 
-    NumberField {
+    Grid {
       width: parent.width
-      label: "Poll interval (seconds)"
-      value: root.service ? root.service.pollSeconds : 30
-      from: 5
-      to: 3600
-      stepSize: 5
-      foreground: root.foreground
-      fontFamily: root.fontFamily
-      onModified: function(v) { if (root.service) root.service.persistSettings({ pollSeconds: v }) }
-    }
+      columns: 3
+      columnSpacing: Style.space(12)
 
-    NumberField {
-      width: parent.width
-      label: "Queue page size"
-      value: root.service ? root.service.pageSize : Model.LIST_PAGE_SIZE
-      from: Model.PAGE_SIZE_MIN
-      to: Model.PAGE_SIZE_MAX
-      stepSize: 5
-      foreground: root.foreground
-      fontFamily: root.fontFamily
-      onModified: function(v) {
-        if (!root.service) return
-        root.service.persistSettings({ pageSize: v })
-        root.service.clearDetailQueue()
-        root.service.forcePoll()
+      NumberField {
+        width: Math.max(0, (parent.width - parent.columnSpacing * 2) / 3)
+        label: "Poll interval (seconds)"
+        value: root.service ? root.service.pollSeconds : 30
+        from: 5
+        to: 3600
+        stepSize: 5
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+        onModified: function(v) { if (root.service) root.service.persistSettings({ pollSeconds: v }) }
+      }
+
+      NumberField {
+        width: Math.max(0, (parent.width - parent.columnSpacing * 2) / 3)
+        label: "Queue page size"
+        value: root.service ? root.service.pageSize : Model.LIST_PAGE_SIZE
+        from: Model.PAGE_SIZE_MIN
+        to: Model.PAGE_SIZE_MAX
+        stepSize: 5
+        foreground: root.foreground
+        fontFamily: root.fontFamily
+        onModified: function(v) {
+          if (!root.service) return
+          root.service.persistSettings({ pageSize: v })
+          root.service.clearDetailQueue()
+          root.service.forcePoll()
+        }
       }
     }
 
