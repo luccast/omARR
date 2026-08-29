@@ -15,11 +15,13 @@ No telemetry. No third-party hosts. No Node, Python, or extra runtime. Dashboard
 API keys, Plex tokens, Jellyfin API keys, qBittorrent passwords, and cookie jars never go in `shell.json` or process argv.
 
 - Secrets live in `~/.local/state/omarchy/omarr/credentials.json`, directory mode `0700`, file mode `0600`.
-- `X-Api-Key` is written to a `0600` header file and passed to curl as `-H @file`.
+- State and cache dirs are created as real `0700` directories owned by the user. A symlink at that path is refused.
+- Secret files (credentials, seen ids, curl header/body) are written to an exclusive `mktemp` file in that directory, `chmod 600`, then `mv` onto the destination so a leftover symlink is replaced instead of followed.
+- `X-Api-Key` is written to that `0600` header file and passed to curl as `-H @file`.
 - Plex `X-Plex-Token` (plus `Accept`) is written as a `0600` curl config and passed as `--config file`, never argv.
 - Jellyfin `Authorization` (plus `Accept`) is written as a `0600` curl config and passed as `--config file`, never argv.
 - SABnzbd and qBittorrent form bodies are written to a `0600` file and passed as `--data-binary @file`.
-- qBittorrent session cookies use a jar under `~/.cache/omarchy/omarr/`.
+- Poster/art downloads and qBittorrent cookie jars use the same temp-file + `mv` install into `~/.cache/omarchy/omarr/` (`0700`). curl `-o`/`-c` never point at the final path.
 
 ## HTTP
 

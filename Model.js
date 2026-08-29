@@ -1109,6 +1109,117 @@ function cacheSafe(value) {
   return String(value || "").replace(/[^A-Za-z0-9._-]/g, "_")
 }
 
+function utf8ByteLength(text) {
+  var s = String(text || "")
+  var n = 0
+  for (var i = 0; i < s.length; i++) {
+    var c = s.charCodeAt(i)
+    if (c < 128) n += 1
+    else if (c < 2048) n += 2
+    else if (c >= 0xD800 && c <= 0xDBFF) { n += 4; i++ }
+    else n += 3
+  }
+  return n
+}
+
+function leafName(filePath) {
+  var parts = String(filePath || "").split("/")
+  for (var i = 0; i < parts.length; i++) {
+    if (parts[i] === "..") return ""
+  }
+  var name = parts.length ? parts[parts.length - 1] : ""
+  if (!name || name === "." || name === ".." || name.indexOf("/") !== -1) return ""
+  return name
+}
+
+function nameInDir(dir, filePath) {
+  var root = String(dir || "")
+  var full = String(filePath || "")
+  if (!root || full.indexOf(root + "/") !== 0) return ""
+  return leafName(full.slice(root.length + 1)) === full.slice(root.length + 1)
+    ? leafName(full)
+    : ""
+}
+
+function ensurePrivateDirsCmd(stateDir, cacheDir) {
+  return ["sh", "-c",
+    "ensure() {\n"
+      + "  t=$1\n"
+      + "  mkdir -p -- \"$(dirname -- \"$t\")\" || exit 1\n"
+      + "  if [ -L \"$t\" ]; then exit 1; fi\n"
+      + "  if [ -e \"$t\" ]; then [ -d \"$t\" ] || exit 1; else mkdir -m 700 -- \"$t\" || exit 1; fi\n"
+      + "  chmod 700 -- \"$t\" || exit 1\n"
+      + "  [ -d \"$t\" ] && [ ! -L \"$t\" ] && [ -O \"$t\" ] || exit 1\n"
+      + "  [ \"$(stat -c %a -- \"$t\")\" = 700 ] || exit 1\n"
+      + "}\n"
+      + "ensure \"$1\"\n"
+      + "ensure \"$2\"\n",
+    "omarr-dirs", String(stateDir || ""), String(cacheDir || "")]
+}
+
+function atomicWriteCmd(dir, name, bytes) {
+  var leaf = leafName(name)
+  var n = parseInt(bytes, 10)
+  if (!leaf || leaf !== String(name || "") || !(n >= 0)) return ["sh", "-c", "exit 1"]
+  return ["sh", "-c",
+    "dir=$1; name=$2; n=$3\n"
+      + "[ -d \"$dir\" ] && [ ! -L \"$dir\" ] && [ -O \"$dir\" ] || exit 1\n"
+      + "umask 077\n"
+      + "tmp=$(mktemp -p \"$dir\" .tmp.XXXXXX) || exit 1\n"
+      + "trap 'rm -f \"$tmp\"' EXIT\n"
+      + "head -c \"$n\" > \"$tmp\" || exit 1\n"
+      + "[ \"$(wc -c < \"$tmp\")\" -eq \"$n\" ] || exit 1\n"
+      + "[ -f \"$tmp\" ] && [ ! -L \"$tmp\" ] && [ -O \"$tmp\" ] || exit 1\n"
+      + "chmod 600 -- \"$tmp\" || exit 1\n"
+      + "[ \"$(stat -c %a -- \"$tmp\")\" = 600 ] || exit 1\n"
+      + "mv -f -T -- \"$tmp\" \"$dir/$name\" || exit 1\n"
+      + "trap - EXIT\n",
+    "omarr-write", String(dir || ""), leaf, String(n)]
+}
+
+function safeCurlCmd(dir, opts, curlArgs) {
+  var o = opts && typeof opts === "object" ? opts : {}
+  var out = leafName(o.outputName || "")
+  var cwrite = leafName(o.cookieWriteName || "")
+  var cread = leafName(o.cookieReadName || "")
+  if ((o.outputName && out !== String(o.outputName))
+    || (o.cookieWriteName && cwrite !== String(o.cookieWriteName))
+    || (o.cookieReadName && cread !== String(o.cookieReadName))) {
+    return ["sh", "-c", "exit 1"]
+  }
+  var args = Array.isArray(curlArgs) ? curlArgs.slice() : []
+  var url = String(o.url || "")
+  return ["sh", "-c",
+    "dir=$1; out=$2; cwrite=$3; cread=$4; url=$5; shift 5\n"
+      + "[ -d \"$dir\" ] && [ ! -L \"$dir\" ] && [ -O \"$dir\" ] || exit 1\n"
+      + "umask 077\n"
+      + "out_tmp=; c_tmp=\n"
+      + "cleanup() { rm -f ${out_tmp:+\"$out_tmp\"} ${c_tmp:+\"$c_tmp\"}; }\n"
+      + "trap cleanup EXIT\n"
+      + "if [ -n \"$out\" ]; then out_tmp=$(mktemp -p \"$dir\" .art.XXXXXX) || exit 1; set -- \"$@\" -o \"$out_tmp\"; fi\n"
+      + "if [ -n \"$cwrite\" ]; then c_tmp=$(mktemp -p \"$dir\" .jar.XXXXXX) || exit 1; set -- \"$@\" -c \"$c_tmp\"; fi\n"
+      + "if [ -n \"$cread\" ]; then\n"
+      + "  [ -f \"$dir/$cread\" ] && [ ! -L \"$dir/$cread\" ] && [ -O \"$dir/$cread\" ] || exit 1\n"
+      + "  set -- \"$@\" -b \"$dir/$cread\"\n"
+      + "fi\n"
+      + "if [ -n \"$url\" ]; then set -- \"$@\" -- \"$url\"; fi\n"
+      + "\"$@\" || exit $?\n"
+      + "if [ -n \"$out_tmp\" ]; then\n"
+      + "  [ -f \"$out_tmp\" ] && [ ! -L \"$out_tmp\" ] && [ -O \"$out_tmp\" ] || exit 1\n"
+      + "  mv -f -T -- \"$out_tmp\" \"$dir/$out\" || exit 1\n"
+      + "  out_tmp=\n"
+      + "fi\n"
+      + "if [ -n \"$c_tmp\" ]; then\n"
+      + "  [ -f \"$c_tmp\" ] && [ ! -L \"$c_tmp\" ] && [ -O \"$c_tmp\" ] || exit 1\n"
+      + "  chmod 600 -- \"$c_tmp\" || exit 1\n"
+      + "  mv -f -T -- \"$c_tmp\" \"$dir/$cwrite\" || exit 1\n"
+      + "  c_tmp=\n"
+      + "fi\n"
+      + "trap - EXIT\n",
+    "omarr-curl", String(dir || ""), out, cwrite, cread, url
+  ].concat(args)
+}
+
 function artCachePath(cacheDir, serviceId, itemId, kind) {
   return String(cacheDir || "") + "/" + cacheSafe(serviceId) + "-" + cacheSafe(itemId) + "-" + String(kind || "poster") + "-hd.jpg"
 }
@@ -2003,6 +2114,12 @@ if (typeof module !== "undefined" && module.exports) {
     KIND_DEFAULTS: KIND_DEFAULTS,
     curlBounds: curlBounds,
     scanCurlBounds: scanCurlBounds,
+    utf8ByteLength: utf8ByteLength,
+    leafName: leafName,
+    nameInDir: nameInDir,
+    ensurePrivateDirsCmd: ensurePrivateDirsCmd,
+    atomicWriteCmd: atomicWriteCmd,
+    safeCurlCmd: safeCurlCmd,
     normalizeUrl: normalizeUrl,
     isHttpUrl: isHttpUrl,
     kindOf: kindOf,

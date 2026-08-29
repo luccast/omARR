@@ -31,6 +31,9 @@ Item {
   property bool badgeUrgent: false
   property bool seeding: true
   property bool dirsReady: false
+  property var writeQueue: []
+  property string pendingWriteText: ""
+  property string pendingWriteThen: ""
   property var toastQueue: []
   property string progressDismissedKey: ""
   property var progressJob: null
@@ -52,7 +55,6 @@ Item {
 
   property var reqQueue: []
   property var currentReq: null
-  property bool writingFiles: false
   property var snapshotMap: ({})
   property var healthMisses: ({})
 
@@ -80,13 +82,31 @@ Item {
   }
 
   function persistCredentials() {
-    credsFile.setText(Model.serializeCredentials(root.credentials))
-    chmodStateProc.command = ["chmod", "600", credsPath]
-    chmodStateProc.running = true
+    root.enqueueWrite(root.stateDir, "credentials.json", Model.serializeCredentials(root.credentials), "")
   }
 
   function persistSeen() {
-    seenFile.setText(Model.serializeSeenFile(root.seenIds))
+    root.enqueueWrite(root.stateDir, "seen.json", Model.serializeSeenFile(root.seenIds), "")
+  }
+
+  function enqueueWrite(dir, name, text, thenKind) {
+    root.writeQueue = root.writeQueue.concat([{
+      dir: dir,
+      name: name,
+      text: String(text || ""),
+      thenKind: String(thenKind || "")
+    }])
+    root.pumpWrites()
+  }
+
+  function pumpWrites() {
+    if (secretProc.running || !root.writeQueue.length) return
+    var next = root.writeQueue[0]
+    root.writeQueue = root.writeQueue.slice(1)
+    root.pendingWriteText = next.text
+    root.pendingWriteThen = next.thenKind
+    secretProc.command = Model.atomicWriteCmd(next.dir, next.name, Model.utf8ByteLength(next.text))
+    secretProc.running = true
   }
 
   function persistCredential(id, patch) {
@@ -147,7 +167,7 @@ Item {
   }
 
   function pump() {
-    if (!root.dirsReady || apiProc.running || root.writingFiles) return
+    if (!root.dirsReady || apiProc.running || secretProc.running || root.writeQueue.length) return
     if (!root.reqQueue.length) {
       root.refreshDerived()
       return
@@ -161,20 +181,12 @@ Item {
     root.currentReq = req
     if (req.headerText) {
       req.useCurlConfig = Model.headerIsConfig(req.headerText)
-      headerFile.setText(req.useCurlConfig ? Model.curlHeaderConfig(req.headerText) : req.headerText)
-      headerFile.waitForJob()
+      var header = req.useCurlConfig ? Model.curlHeaderConfig(req.headerText) : req.headerText
+      root.enqueueWrite(root.cacheDir, "header.txt", header, req.bodyText ? "body" : "curl")
+      return
     }
     if (req.bodyText) {
-      bodyFile.setText(req.bodyText)
-      bodyFile.waitForJob()
-    }
-    var chmod = ["chmod", "600"]
-    if (req.headerText) chmod.push(root.headerPath)
-    if (req.bodyText) chmod.push(root.bodyPath)
-    if (chmod.length > 2) {
-      root.writingFiles = true
-      chmodProc.command = chmod
-      chmodProc.running = true
+      root.enqueueWrite(root.cacheDir, "body.txt", req.bodyText, "curl")
       return
     }
     root.runCurl(req)
@@ -235,10 +247,24 @@ Item {
       cmd.push("-H", "Content-Type: application/x-www-form-urlencoded")
       cmd.push("--data-binary", "@" + root.bodyPath)
     }
-    if (req.cookieRead) cmd.push("-b", req.cookieRead)
-    if (req.cookieWrite) cmd.push("-c", req.cookieWrite)
-    if (req.outputPath) cmd.push("-o", req.outputPath)
-    cmd.push("--", req.url)
+    var wrap = req.outputPath || req.cookieWrite || req.cookieRead
+    if (wrap) {
+      var out = Model.nameInDir(root.cacheDir, req.outputPath)
+      var cwrite = Model.nameInDir(root.cacheDir, req.cookieWrite)
+      var cread = Model.nameInDir(root.cacheDir, req.cookieRead)
+      if ((req.outputPath && !out) || (req.cookieWrite && !cwrite) || (req.cookieRead && !cread)) {
+        Qt.callLater(root.pump)
+        return
+      }
+      cmd = Model.safeCurlCmd(root.cacheDir, {
+        outputName: out,
+        cookieWriteName: cwrite,
+        cookieReadName: cread,
+        url: req.url
+      }, cmd)
+    } else {
+      cmd.push("--", req.url)
+    }
     apiProc.command = cmd
     apiProc.running = true
   }
@@ -931,7 +957,7 @@ Item {
   }
 
   function forceDownloaderPoll() {
-    if (root.writingFiles || root.hasDownloaderRequest()) return
+    if (secretProc.running || root.writeQueue.length || root.hasDownloaderRequest()) return
     var rest = root.reqQueue
     root.reqQueue = []
     root.enqueuePoll("downloaders")
@@ -958,7 +984,7 @@ Item {
 
   function finishScanIfIdle() {
     if (!root.scanning) return
-    if (root.reqQueue.length || apiProc.running || root.writingFiles) return
+    if (root.reqQueue.length || apiProc.running || secretProc.running || root.writeQueue.length) return
     root.scanning = false
   }
 
@@ -1079,28 +1105,11 @@ Item {
     onLoadFailed: root.seenIds = []
   }
 
-  FileView {
-    id: headerFile
-    path: root.headerPath
-    watchChanges: false
-    atomicWrites: true
-    blockWrites: true
-    printErrors: false
-  }
-
-  FileView {
-    id: bodyFile
-    path: root.bodyPath
-    watchChanges: false
-    atomicWrites: true
-    blockWrites: true
-    printErrors: false
-  }
-
   Process {
     id: ensureDirProc
     running: false
-    onExited: {
+    onExited: function(code) {
+      if (code !== 0) return
       cacheIndexProc.command = ["ls", "-1", root.cacheDir]
       cacheIndexProc.running = true
     }
@@ -1125,24 +1134,39 @@ Item {
       root.dirsReady = true
       credsFile.reload()
       seenFile.reload()
-      chmodStateProc.command = ["chmod", "700", root.stateDir]
-      chmodStateProc.running = true
       root.rebuildSnapshots()
       root.forcePoll()
     }
   }
 
   Process {
-    id: chmodStateProc
+    id: secretProc
     running: false
-  }
-
-  Process {
-    id: chmodProc
-    running: false
-    onExited: {
-      root.writingFiles = false
-      root.runCurl(root.currentReq)
+    stdinEnabled: true
+    onRunningChanged: {
+      if (running) secretProc.write(root.pendingWriteText)
+    }
+    onExited: function(code) {
+      var thenKind = root.pendingWriteThen
+      root.pendingWriteText = ""
+      root.pendingWriteThen = ""
+      if (code !== 0) {
+        if (thenKind === "body" || thenKind === "curl") {
+          root.handleFailure()
+          root.currentReq = null
+        }
+        Qt.callLater(root.pumpWrites)
+        Qt.callLater(root.pump)
+        return
+      }
+      if (thenKind === "body") {
+        var req = root.currentReq
+        if (req && req.bodyText) root.enqueueWrite(root.cacheDir, "body.txt", req.bodyText, "curl")
+      } else if (thenKind === "curl") {
+        root.runCurl(root.currentReq)
+      }
+      Qt.callLater(root.pumpWrites)
+      Qt.callLater(root.pump)
     }
   }
 
@@ -1224,7 +1248,7 @@ Item {
   }
 
   Component.onCompleted: {
-    ensureDirProc.command = ["mkdir", "-p", root.stateDir, root.cacheDir]
+    ensureDirProc.command = Model.ensurePrivateDirsCmd(root.stateDir, root.cacheDir)
     ensureDirProc.running = true
   }
 }

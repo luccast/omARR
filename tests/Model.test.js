@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 const assert = require("node:assert/strict")
 const fs = require("fs")
+const os = require("os")
 const path = require("path")
+const { spawnSync } = require("node:child_process")
 const Model = require("../Model.js")
 
 function eq(rows) {
@@ -1053,5 +1055,75 @@ assert.ok(Model.downloaderBusy([{
   id: "son", kind: "sonarr", name: "Sonarr",
   queue: [{ id: "1", title: "Show", status: "downloading", progress: 0.4, kind: "sonarr" }]
 }]) === false, "downloader idle arr")
+
+eq([
+  [Model.utf8ByteLength("abc"), 3, "utf8 ascii"],
+  [Model.utf8ByteLength("é"), 2, "utf8 latin"],
+  [Model.utf8ByteLength("🙂"), 4, "utf8 emoji"]
+])
+assert.equal(Model.leafName("/tmp/omarr/header.txt"), "header.txt", "leaf name")
+assert.equal(Model.leafName("/tmp/omarr/../etc/passwd"), "", "leaf rejects parent")
+assert.equal(Model.leafName("header.txt"), "header.txt", "leaf bare")
+assert.equal(Model.nameInDir("/tmp/omarr", "/tmp/omarr/header.txt"), "header.txt", "name in dir")
+assert.equal(Model.nameInDir("/tmp/omarr", "/tmp/other/header.txt"), "", "name outside dir")
+
+var sandbox = fs.mkdtempSync(path.join(os.tmpdir(), "omarr-priv-"))
+var stateDir = path.join(sandbox, "state", "omarr")
+var cacheDir = path.join(sandbox, "cache", "omarr")
+function runCmd(argv, input) {
+  return spawnSync(argv[0], argv.slice(1), { input: input || "", encoding: "utf8" })
+}
+function modeOf(p) {
+  return (fs.statSync(p).mode & 0o777).toString(8)
+}
+
+var made = runCmd(Model.ensurePrivateDirsCmd(stateDir, cacheDir))
+assert.equal(made.status, 0, "ensure private dirs: " + made.stderr)
+assert.equal(modeOf(stateDir), "700", "state dir 700")
+assert.equal(modeOf(cacheDir), "700", "cache dir 700")
+assert.ok(!fs.lstatSync(stateDir).isSymbolicLink(), "state dir not symlink")
+
+var linked = path.join(sandbox, "linked-omarr")
+fs.symlinkSync(cacheDir, linked)
+var refused = runCmd(Model.ensurePrivateDirsCmd(linked, path.join(sandbox, "other-omarr")))
+assert.ok(refused.status !== 0, "ensure refuses symlink dir")
+
+var secret = "api-key=super-secret\n"
+var steal = path.join(sandbox, "stolen.txt")
+fs.writeFileSync(steal, "UNTOUCHED")
+fs.symlinkSync(steal, path.join(cacheDir, "header.txt"))
+var wrote = runCmd(Model.atomicWriteCmd(cacheDir, "header.txt", Model.utf8ByteLength(secret)), secret)
+assert.equal(wrote.status, 0, "atomic write: " + wrote.stderr)
+assert.equal(fs.readFileSync(steal, "utf8"), "UNTOUCHED", "write does not follow symlink")
+assert.equal(fs.readFileSync(path.join(cacheDir, "header.txt"), "utf8"), secret, "secret landed on dest")
+assert.ok(!fs.lstatSync(path.join(cacheDir, "header.txt")).isSymbolicLink(), "dest is regular")
+assert.equal(modeOf(path.join(cacheDir, "header.txt")), "600", "secret file 600")
+
+var slash = runCmd(Model.atomicWriteCmd(cacheDir, "../escape.txt", 4), "nope")
+assert.ok(slash.status !== 0, "atomic write rejects path escape")
+assert.ok(!fs.existsSync(path.join(sandbox, "escape.txt")), "no escape file")
+
+var fakeCurl = path.join(sandbox, "fake-curl")
+fs.writeFileSync(fakeCurl, "#!/bin/sh\nwhile [ \"$1\" != \"-o\" ]; do shift; done\nshift\nprintf STILL > \"$1\"\n")
+fs.chmodSync(fakeCurl, 0o755)
+var artSteal = path.join(sandbox, "art-stolen.txt")
+fs.writeFileSync(artSteal, "UNTOUCHED")
+fs.symlinkSync(artSteal, path.join(cacheDir, "svc-1-9-poster-hd.jpg"))
+var downloaded = runCmd(Model.safeCurlCmd(cacheDir, { outputName: "svc-1-9-poster-hd.jpg" }, [fakeCurl]))
+assert.equal(downloaded.status, 0, "safe curl: " + downloaded.stderr)
+assert.equal(fs.readFileSync(artSteal, "utf8"), "UNTOUCHED", "download does not follow symlink")
+assert.equal(fs.readFileSync(path.join(cacheDir, "svc-1-9-poster-hd.jpg"), "utf8"), "STILL", "art installed")
+assert.ok(!fs.lstatSync(path.join(cacheDir, "svc-1-9-poster-hd.jpg")).isSymbolicLink(), "art is regular")
+
+var spy = path.join(sandbox, "spy-curl")
+var spyLog = path.join(sandbox, "curl-args.txt")
+fs.writeFileSync(spy, "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"" + spyLog + "\"\n")
+fs.chmodSync(spy, 0o755)
+runCmd(Model.safeCurlCmd(cacheDir, { outputName: "spy.jpg", url: "http://127.0.0.1/art" }, [spy]))
+var spyArgs = fs.readFileSync(spyLog, "utf8").trim().split("\n")
+assert.ok(spyArgs.indexOf("-o") !== -1 && spyArgs.indexOf("-o") < spyArgs.indexOf("--"), "curl -o before --")
+assert.equal(spyArgs[spyArgs.length - 1], "http://127.0.0.1/art", "curl url after --")
+
+fs.rmSync(sandbox, { recursive: true, force: true })
 
 console.log("Model.test.js ok")
