@@ -2,7 +2,7 @@
 
 The Omarchy Arr stack desktop plugin for homelabs.
 
-omARR is an [Omarchy](https://omarchy.org/) bar plugin for homelab people who already run Sonarr, Radarr, Plex, SABnzbd, or qBittorrent. Click the skull icon to see your *arr fleet on the left and a live content overview on the right. Now playing, on deck, recently added, and calendar. Add custom links and use as a homelab launcher, all without leaving the Omarchy desktop.
+omARR is an [Omarchy](https://omarchy.org/) bar plugin for homelab people who already run Sonarr, Radarr, Plex, Jellyfin, SABnzbd, or qBittorrent. Click the skull icon to see your *arr fleet on the left and a live content overview on the right. Now playing, on deck, recently added, and calendar. Add custom links and use as a homelab launcher, all without leaving the Omarchy desktop.
 
 ![omARR panel](docs/panel.png)
 
@@ -10,7 +10,7 @@ omARR is an [Omarchy](https://omarchy.org/) bar plugin for homelab people who al
 
 - Bar badge for active downloads and outages
 - Fleet roster with live health for every service you add
-- Overview: Plex now playing and on deck, Sonarr/Radarr calendar, SABnzbd and qBittorrent queues
+- Overview: Plex and Jellyfin now playing and on deck, Sonarr/Radarr calendar, SABnzbd and qBittorrent queues
 - Live download notification card that stays up while SAB or qBit is actually downloading
 - Toasts for grabs, imports, finished or failed downloads, and services that drop or recover
 - Pause and resume a job from the panel
@@ -47,7 +47,7 @@ Update later with `omarchy plugin update io.github.luccast.omarr`.
 | `s` | Settings |
 | Escape | Close |
 
-Toasts for grabs, imports, Plex library adds, finished or failed downloads, and services going down or coming back. Click a toast to summon the panel.
+Toasts for grabs, imports, Plex and Jellyfin library adds, finished or failed downloads, and services going down or coming back. Click a toast to summon the panel.
 
 While SABnzbd or qBittorrent is actually downloading, a progress card stays on screen (progress bar, title, client icon, poster when *arr has one). Those two clients poll every 2s so short jobs still get a card; everything else stays on the interval in settings. Seeding torrents are ignored. Dismiss it until that job finishes; turn the card off in settings.
 
@@ -62,11 +62,12 @@ First open is an empty overview. Add a service by kind, or **Scan local ports** 
 | Radarr | API key | Queue, history, calendar, missing | Open in browser |
 | SABnzbd | API key | Queue, history, speed | Pause / resume a job |
 | Plex | token | Now playing, on deck, recently added | Open in browser |
+| Jellyfin | API key | Now playing, resume, recently added | Open in browser |
 | qBittorrent | username + password | Torrents, transfer speed | Pause / resume a torrent |
 
 Overview shows a service’s queue or *arr calendar only when that service has the matching toggle on. SABnzbd and qBittorrent queues default on; Sonarr and Radarr queues default off.
 
-Layout (names, URLs, groups, order, notification flags, poll interval, queue page size, density, download progress card) is stored in `~/.config/omarchy/shell.json`. API keys, Plex tokens, and passwords are stored only in `~/.local/state/omarchy/omarr/credentials.json` (`0600`).
+Layout (names, URLs, groups, order, notification flags, poll interval, queue page size, density, download progress card) is stored in `~/.config/omarchy/shell.json`. API keys, Plex tokens, Jellyfin keys, and passwords are stored only in `~/.local/state/omarchy/omarr/credentials.json` (`0600`).
 
 ## Icons
 

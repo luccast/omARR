@@ -1266,6 +1266,14 @@ function pickJellyfinUser(raw, preferredName) {
   return first || { id: "", name: "" }
 }
 
+function applyJellyfinProfileMiss(snapshot, preferredName) {
+  var next = snapshot && typeof snapshot === "object" ? snapshot : emptySnapshot({})
+  next.statusText = String(preferredName || "") ? "Profile not found: " + preferredName : "No enabled profile"
+  next.onDeck = []
+  next.recent = []
+  return next
+}
+
 function jellyfinItemImage(row) {
   var item = row && typeof row === "object" ? row : {}
   var backdrops = Array.isArray(item.BackdropImageTags) ? item.BackdropImageTags : []
@@ -1292,7 +1300,7 @@ function parseJellyfinItem(row, session) {
   var position = Number(userData.PlaybackPositionTicks) || 0
   var sessionRow = session && typeof session === "object" ? session : null
   if (sessionRow && sessionRow.PlayState) position = Number(sessionRow.PlayState.PositionTicks) || 0
-  var progress = Number(userData.PlayedPercentage) / 100
+  var progress = sessionRow ? 0 : Number(userData.PlayedPercentage) / 100
   if (!(progress > 0) && duration > 0) progress = position / duration
   progress = Math.max(0, Math.min(1, Number(progress) || 0))
   if (sessionRow) {
@@ -2094,6 +2102,7 @@ if (typeof module !== "undefined" && module.exports) {
     parsePlexSessions: parsePlexSessions,
     parseJellyfinIdentity: parseJellyfinIdentity,
     pickJellyfinUser: pickJellyfinUser,
+    applyJellyfinProfileMiss: applyJellyfinProfileMiss,
     parseJellyfinLibrary: parseJellyfinLibrary,
     parseJellyfinSessions: parseJellyfinSessions,
     emptySnapshot: emptySnapshot,

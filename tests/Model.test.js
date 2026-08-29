@@ -628,6 +628,15 @@ assert.equal(Model.pickJellyfinUser(jellyfinUsers, "pRiMaRy UsEr").id, "primary-
 assert.equal(Model.pickJellyfinUser(jellyfinUsers, "").id, "primary-user", "jellyfin first enabled profile")
 assert.equal(Model.pickJellyfinUser(jellyfinUsers, "missing").id, "", "jellyfin missing profile")
 
+var jellyfinStale = Model.emptySnapshot({ id: "j", kind: "jellyfin", name: "Jellyfin" })
+jellyfinStale.onDeck = [{ id: "old-deck" }]
+jellyfinStale.recent = [{ id: "old-recent" }]
+var jellyfinMiss = Model.applyJellyfinProfileMiss(jellyfinStale, "Missing User")
+assert.equal(jellyfinMiss.statusText, "Profile not found: Missing User", "jellyfin missing profile text")
+assert.equal(jellyfinMiss.onDeck.length, 0, "jellyfin miss clears on deck")
+assert.equal(jellyfinMiss.recent.length, 0, "jellyfin miss clears recent")
+assert.equal(Model.applyJellyfinProfileMiss(jellyfinStale, "").statusText, "No enabled profile", "jellyfin no profile text")
+
 var jellyfinDeck = Model.parseJellyfinLibrary(JSON.stringify({ Items: [{
   Id: "episode-id",
   Type: "Episode",
@@ -682,6 +691,20 @@ var jellyfinNow = Model.parseJellyfinSessions(JSON.stringify([
 assert.equal(jellyfinNow.length, 1, "jellyfin active session")
 assert.equal(jellyfinNow[0].progress, 0.25, "jellyfin session progress")
 assert.ok(jellyfinNow[0].subtitle.indexOf("Test User · Test Player · Paused") !== -1, "jellyfin session context")
+
+var jellyfinLive = Model.parseJellyfinSessions(JSON.stringify([{
+  UserName: "Test User",
+  DeviceName: "TV",
+  PlayState: { PositionTicks: 200, IsPaused: false },
+  NowPlayingItem: {
+    Id: "live-id",
+    Type: "Movie",
+    Name: "Example Movie",
+    RunTimeTicks: 400,
+    UserData: { PlayedPercentage: 10, PlaybackPositionTicks: 40 }
+  }
+}]), 20)
+assert.equal(jellyfinLive[0].progress, 0.5, "jellyfin session uses live playstate")
 
 var snap = Model.emptySnapshot({ id: "svc-1", kind: "sonarr", name: "Sonarr", url: "http://s:8989", group: "Media" })
 assert.equal(snap.health, "unknown", "empty health")

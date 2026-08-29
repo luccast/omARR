@@ -610,8 +610,7 @@ Item {
         var jfAuth = root.cred(service.id)
         var profile = Model.pickJellyfinUser(parsed.body, jfAuth.username)
         if (!profile.id) {
-          snap.statusText = jfAuth.username ? "Profile not found: " + jfAuth.username : "No enabled profile"
-          root.commitSnapshot(snap, service)
+          root.commitSnapshot(Model.applyJellyfinProfileMiss(snap, jfAuth.username), service)
           return
         }
         snap.profileName = profile.name

@@ -12,11 +12,12 @@ No telemetry. No third-party hosts. No Node, Python, or extra runtime. Dashboard
 
 ## Credentials
 
-API keys, Plex tokens, qBittorrent passwords, and cookie jars never go in `shell.json` or process argv.
+API keys, Plex tokens, Jellyfin API keys, qBittorrent passwords, and cookie jars never go in `shell.json` or process argv.
 
 - Secrets live in `~/.local/state/omarchy/omarr/credentials.json`, directory mode `0700`, file mode `0600`.
 - `X-Api-Key` is written to a `0600` header file and passed to curl as `-H @file`.
 - Plex `X-Plex-Token` (plus `Accept`) is written as a `0600` curl config and passed as `--config file`, never argv.
+- Jellyfin `Authorization` (plus `Accept`) is written as a `0600` curl config and passed as `--config file`, never argv.
 - SABnzbd and qBittorrent form bodies are written to a `0600` file and passed as `--data-binary @file`.
 - qBittorrent session cookies use a jar under `~/.cache/omarchy/omarr/`.
 
