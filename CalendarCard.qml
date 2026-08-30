@@ -58,11 +58,14 @@ Item {
   width: parent ? parent.width : implicitWidth
   height: Math.round(width * 9 / 16)
 
+  signal clicked()
+
   MouseArea {
     id: hoverArea
     anchors.fill: parent
     hoverEnabled: true
-    acceptedButtons: Qt.NoButton
+    cursorShape: Qt.PointingHandCursor
+    onClicked: root.clicked()
   }
 
   Rectangle {

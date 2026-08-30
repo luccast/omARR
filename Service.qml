@@ -157,6 +157,15 @@ Item {
     if (snap && snap.url) root.openUrl(snap.url)
   }
 
+  function openItem(item, serviceId) {
+    var snap = Model.snapshotById(root.snapshots, serviceId || (item && item.serviceId) || "")
+    var url = Model.itemOpenUrl(snap, item)
+    var cmd = Model.openItemCommand(url, (item && item.kind) || (snap && snap.kind))
+    if (!cmd.length) return
+    openProc.command = cmd
+    openProc.running = true
+  }
+
   function cred(id) {
     return Model.credentialFor(root.credentials, id)
   }
@@ -227,6 +236,7 @@ Item {
     var row = info && typeof info === "object" ? info : {}
     next.version = String(row.version || "")
     next.statusText = String(row.statusText || next.version || "Reachable")
+    if (row.machineId) next.machineId = String(row.machineId)
     root.commitSnapshot(next, service)
   }
 
@@ -276,7 +286,7 @@ Item {
 
   function cloneSnap(snap) {
     var next = Model.emptySnapshot(snap)
-    var keys = ["health", "statusText", "version", "paused", "speed", "queue", "queuePage", "queueTotal", "calendar", "activity", "wanted", "sessions", "onDeck", "recent"]
+    var keys = ["health", "statusText", "version", "machineId", "paused", "speed", "queue", "queuePage", "queueTotal", "calendar", "activity", "wanted", "sessions", "onDeck", "recent"]
     for (var i = 0; i < keys.length; i++) next[keys[i]] = snap[keys[i]]
     return next
   }
@@ -585,6 +595,7 @@ Item {
       var ident = Model.parsePlexIdentity(parsed.body)
       root.commitIdentity(service, snap, parsed.status, {
         version: ident.version,
+        machineId: ident.machineId,
         statusText: ident.version || "Reachable"
       })
       return

@@ -284,7 +284,7 @@ var cal = Model.parseArrCalendar(JSON.stringify([
     airDate: "2026-08-26",
     hasFile: false,
     monitored: true,
-    series: { title: "Show", id: 3 },
+    series: { title: "Show", id: 3, titleSlug: "show" },
     seasonNumber: 1,
     episodeNumber: 2,
     title: "Next"
@@ -293,6 +293,7 @@ var cal = Model.parseArrCalendar(JSON.stringify([
 assert.equal(cal[0].title, "Show", "cal series")
 assert.equal(cal[0].subtitle, "S01E02 Next", "cal episode")
 assert.equal(cal[0].posterId, "3", "cal poster")
+assert.equal(cal[0].slug, "show", "cal series slug")
 assert.equal(cal[0].rating, 0, "cal no rating")
 
 var calRated = Model.parseArrCalendar(JSON.stringify([
@@ -518,7 +519,28 @@ assert.ok(!Model.headerIsConfig(Model.headerApiKey("k")), "api key is one header
 
 var plexIdent = Model.parsePlexIdentity(JSON.stringify({ MediaContainer: { version: "1.41.2", machineIdentifier: "abc" } }))
 assert.equal(plexIdent.version, "1.41.2", "plex version")
+assert.equal(plexIdent.machineId, "abc", "plex machine id")
 assert.ok(plexIdent.healthy === true, "plex identity ok")
+
+eq([
+  [Model.itemOpenUrl({ url: "http://p:32400", machineId: "abc", kind: "plex" }, { id: "11", kind: "plex" }),
+    "http://p:32400/web/index.html#!/server/abc/details?key=" + encodeURIComponent("/library/metadata/11"), "plex item url"],
+  [Model.itemOpenUrl({ url: "http://p:32400", kind: "plex" }, { id: "11", kind: "plex" }),
+    "http://p:32400/web/index.html", "plex item url without machine"],
+  [Model.itemOpenUrl({ url: "http://j:8096", kind: "jellyfin" }, { id: "guid", kind: "jellyfin" }),
+    "http://j:8096/web/index.html#!/details?id=guid", "jellyfin item url"],
+  [Model.itemOpenUrl({ url: "http://s:8989", kind: "sonarr" }, { slug: "show", kind: "sonarr" }),
+    "http://s:8989/series/show", "sonarr series url"],
+  [Model.itemOpenUrl({ url: "http://s:8989", kind: "sonarr" }, { kind: "sonarr" }),
+    "http://s:8989", "sonarr without slug"],
+  [Model.itemOpenUrl({ url: "http://r:7878", kind: "radarr" }, { slug: "film-2024", kind: "radarr" }),
+    "http://r:7878/movie/film-2024", "radarr movie url"],
+  [Model.itemOpenUrl({ url: "http://p:32400", machineId: "abc", kind: "plex" }, { id: "svc-1:11", posterId: "11", kind: "plex" }),
+    "http://p:32400/web/index.html#!/server/abc/details?key=" + encodeURIComponent("/library/metadata/11"), "plex overview posterId"]
+])
+assert.deepEqual(Model.openItemCommand("http://p:32400/web/index.html", "plex"), ["omarchy-launch-webapp", "http://p:32400/web/index.html"])
+assert.deepEqual(Model.openItemCommand("http://s:8989/series/show", "sonarr"), ["omarchy", "launch", "browser", "http://s:8989/series/show"])
+assert.deepEqual(Model.openItemCommand("", "plex"), [])
 
 var plexRecent = Model.parsePlexLibrary(JSON.stringify({
   MediaContainer: {

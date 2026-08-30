@@ -776,7 +776,8 @@ function arrEpisodeShow(row) {
   var series = item.series && typeof item.series === "object" ? item.series : {}
   return {
     title: String(series.title || item.seriesTitle || ""),
-    id: series.id ? String(series.id) : String(item.seriesId || "")
+    id: series.id ? String(series.id) : String(item.seriesId || ""),
+    slug: String(series.titleSlug || item.titleSlug || "")
   }
 }
 
@@ -805,6 +806,7 @@ function arrListItem(row, kind) {
       title: String(item.title || ""),
       subtitle: String(item.year || ""),
       posterId: String(item.id || ""),
+      slug: String(item.titleSlug || ""),
       kind: "radarr"
     }
   }
@@ -814,6 +816,7 @@ function arrListItem(row, kind) {
     title: show.title,
     subtitle: episodeCode(item.seasonNumber, item.episodeNumber) + (item.title ? " " + item.title : ""),
     posterId: show.id,
+    slug: show.slug,
     kind: "sonarr"
   }
 }
@@ -1292,7 +1295,7 @@ function parsePlexIdentity(raw) {
   var data = parseJson(raw, null)
   var mc = data && data.MediaContainer ? data.MediaContainer : data
   if (!mc || typeof mc !== "object") return { version: "", healthy: false }
-  return { version: String(mc.version || ""), healthy: true }
+  return { version: String(mc.version || ""), machineId: String(mc.machineIdentifier || ""), healthy: true }
 }
 
 function parsePlexItem(row, asSession) {
@@ -1482,6 +1485,7 @@ function emptySnapshot(service) {
     onDeck: [],
     recent: [],
     sessions: [],
+    machineId: String(svc.machineId || ""),
     showQueue: svc.showQueue === true,
     showCalendar: svc.showCalendar === true
   }
@@ -1714,6 +1718,7 @@ function mergeNow(snapshots) {
           subtitle: ev.subtitle,
           airDate: calendarDayKey(ev.airDate) || ev.airDate,
           posterId: ev.posterId,
+          slug: ev.slug || "",
           rating: ev.rating || 0,
           ratingSource: ev.ratingSource || ""
         })
@@ -2084,6 +2089,41 @@ function fleetOrderKey(list) {
   return out.join(",")
 }
 
+function itemKey(item) {
+  var row = item || {}
+  if (row.posterId) return String(row.posterId)
+  var id = String(row.id || "")
+  var colon = id.lastIndexOf(":")
+  return colon === -1 ? id : id.slice(colon + 1)
+}
+
+function itemOpenUrl(service, item) {
+  var base = normalizeUrl(service && service.url)
+  if (!isHttpUrl(base)) return ""
+  var kind = kindOf((item && item.kind) || (service && service.kind))
+  if (kind === "plex") {
+    var machineId = String((service && service.machineId) || "")
+    var ratingKey = itemKey(item)
+    if (!machineId || !ratingKey) return base + "/web/index.html"
+    return base + "/web/index.html#!/server/" + encodeURIComponent(machineId)
+      + "/details?key=" + encodeURIComponent("/library/metadata/" + ratingKey)
+  }
+  if (kind === "jellyfin") {
+    var jellyId = itemKey(item)
+    return jellyId ? base + "/web/index.html#!/details?id=" + encodeURIComponent(jellyId) : base
+  }
+  var slug = String((item && item.slug) || "")
+  if (kind === "sonarr") return slug ? base + "/series/" + encodeURIComponent(slug) : base
+  if (kind === "radarr") return slug ? base + "/movie/" + encodeURIComponent(slug) : base
+  return base
+}
+
+function openItemCommand(url, kind) {
+  if (!isHttpUrl(url)) return []
+  if (isMediaKind(kind)) return ["omarchy-launch-webapp", url]
+  return ["omarchy", "launch", "browser", url]
+}
+
 function splitHttp(text) {
   var raw = String(text || "")
   var nl = raw.lastIndexOf("\n")
@@ -2252,6 +2292,8 @@ if (typeof module !== "undefined" && module.exports) {
     scanUrl: scanUrl,
     kindFromPort: kindFromPort,
     fleetOrderKey: fleetOrderKey,
+    itemOpenUrl: itemOpenUrl,
+    openItemCommand: openItemCommand,
     fileUrl: fileUrl,
     splitHttp: splitHttp,
     snapshotById: snapshotById

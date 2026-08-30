@@ -180,6 +180,10 @@ Panel {
     if (root.selectedSnap && root.service) root.service.openService(root.selectedSnap.id)
   }
 
+  function openCard(item, serviceId) {
+    if (root.service) root.service.openItem(item, serviceId)
+  }
+
   function healthColor(health) {
     if (health === "down") return root.urgent
     if (health === "up") return root.contentForeground
@@ -814,6 +818,7 @@ Panel {
                     fanartUrl: root.mediaSource(modelData.serviceId, modelData.posterId)
                     compact: root.compact
                     fontFamily: root.contentFontFamily
+                    onClicked: root.openCard(modelData)
                   }
                 }
 
@@ -827,6 +832,7 @@ Panel {
                     fanartUrl: root.mediaSource(modelData.serviceId, modelData.posterId)
                     compact: root.compact
                     fontFamily: root.contentFontFamily
+                    onClicked: root.openCard(modelData)
                   }
                 }
 
@@ -859,6 +865,7 @@ Panel {
                         fanartUrl: root.fanartSource(modelData.serviceId, modelData.posterId)
                         compact: root.compact
                         fontFamily: root.contentFontFamily
+                        onClicked: root.openCard(modelData)
                       }
                     }
                   }
@@ -1029,6 +1036,7 @@ Panel {
                     fanartUrl: root.detailSnap ? root.mediaSource(root.detailSnap.id, modelData.id) : ""
                     compact: root.compact
                     fontFamily: root.contentFontFamily
+                    onClicked: root.openCard(modelData, root.detailSnap ? root.detailSnap.id : "")
                   }
                 }
                 }
@@ -1057,6 +1065,7 @@ Panel {
                       fanartUrl: root.detailSnap ? root.mediaSource(root.detailSnap.id, modelData.id) : ""
                       compact: root.compact
                       fontFamily: root.contentFontFamily
+                      onClicked: root.openCard(modelData, root.detailSnap ? root.detailSnap.id : "")
                     }
                   }
                 }
@@ -1275,6 +1284,7 @@ Panel {
                         fanartUrl: root.detailSnap ? root.fanartSource(root.detailSnap.id, modelData.posterId) : ""
                         compact: root.compact
                         fontFamily: root.contentFontFamily
+                        onClicked: root.openCard(modelData, root.detailSnap ? root.detailSnap.id : "")
                       }
                     }
                   }
