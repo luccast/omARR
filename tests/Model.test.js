@@ -991,6 +991,8 @@ var sabJob = Model.progressToast([sabProgressSnap([{
   id: "nzo1", title: "Show.S01E01", status: "downloading", progress: 0.4, timeleft: "00:10:00", kind: "sabnzbd"
 }])])
 assert.ok(sabJob && sabJob.key === "sab:nzo1", "progress toast sab key")
+assert.equal(sabJob.jobs.length, 1, "single job list")
+assert.equal(sabJob.count, 1, "single job count")
 assert.equal(sabJob.title, "Show.S01E01", "progress toast sab title")
 assert.equal(sabJob.kind, "sabnzbd", "progress toast sab kind")
 assert.equal(sabJob.progress, 0.4, "progress toast sab progress")
@@ -1021,6 +1023,9 @@ var qbitSnap = {
 var qbitJob = Model.progressToast([qbitSnap])
 assert.ok(qbitJob && qbitJob.key === "qbit:fast", "progress toast picks fastest")
 assert.equal(qbitJob.title, "Show B", "progress toast fastest title")
+assert.equal(qbitJob.jobs.length, 2, "qbit toast lists both downloads")
+assert.equal(qbitJob.jobs[0].key, "qbit:slow", "qbit jobs keep queue order")
+assert.equal(qbitJob.jobs[1].key, "qbit:fast", "qbit jobs include fastest")
 
 assert.ok(Model.progressToast([{
   id: "qbit", kind: "qbittorrent", name: "qBittorrent",
@@ -1033,6 +1038,8 @@ assert.ok(Model.progressToast([{
 
 var nextJob = Model.progressToast([qbitSnap], "qbit:fast")
 assert.ok(nextJob && nextJob.key === "qbit:slow", "progress toast skip dismissed")
+assert.equal(nextJob.jobs.length, 1, "dismissed lead leaves remaining job")
+assert.equal(nextJob.count, 1, "remaining job is single")
 assert.ok(Model.progressToastStale("qbit:gone", [qbitSnap]) === true, "stale dismissed key")
 assert.ok(Model.progressToastStale("qbit:fast", [qbitSnap]) === false, "active dismissed key stays")
 
@@ -1059,6 +1066,34 @@ var hashed = Model.progressToast([
   }
 ])
 assert.equal(hashed.posterId, "44", "progress toast matches torrent hash")
+
+var mixed = Model.progressToast([
+  sabProgressSnap([{
+    id: "nzo1", title: "Show.S01E01", status: "downloading", progress: 0.4, kind: "sabnzbd"
+  }]),
+  {
+    id: "qbit", kind: "qbittorrent", name: "qBittorrent",
+    queue: [qbitItem("hash", "Movie.2024", "downloading", 0.5, 2000)]
+  }
+])
+assert.equal(mixed.jobs.length, 2, "mixed downloaders in one toast")
+assert.equal(mixed.count, 2, "mixed count")
+assert.ok(mixed.jobs.some(function(j) { return j.kind === "sabnzbd" }), "mixed includes sab")
+assert.ok(mixed.jobs.some(function(j) { return j.kind === "qbittorrent" }), "mixed includes qbit")
+assert.ok(mixed.jobs.some(function(j) { return j.serviceName === "SABnzbd" || j.kind === "sabnzbd" }), "mixed keeps sab identity")
+assert.ok(mixed.jobs.some(function(j) { return j.serviceName === "qBittorrent" }), "mixed keeps qbit name")
+var mixedSnaps = [
+  sabProgressSnap([{
+    id: "nzo1", title: "Show.S01E01", status: "downloading", progress: 0.4, kind: "sabnzbd"
+  }]),
+  {
+    id: "qbit", kind: "qbittorrent", name: "qBittorrent",
+    queue: [qbitItem("hash", "Movie.2024", "downloading", 0.5, 2000)]
+  }
+]
+assert.equal(Model.progressToastStale("sab:nzo1,qbit:hash", mixedSnaps), false, "dismissed multi still live")
+assert.ok(Model.progressToast(mixedSnaps, "sab:nzo1,qbit:hash") === null, "dismissed multi hides both")
+assert.equal(Model.progressToastStale("sab:nzo1,qbit:hash", []), true, "dismissed multi stale when idle") 
 
 assert.equal(Model.DOWNLOAD_POLL_MS, 2000, "downloader poll ms")
 assert.ok(Model.downloaderBusy([]) === false, "downloader idle empty")

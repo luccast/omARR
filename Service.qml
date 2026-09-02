@@ -411,25 +411,34 @@ Item {
   }
 
   function dismissProgressToast() {
-    if (root.progressJob && root.progressJob.key)
-      root.progressDismissedKey = root.progressJob.key
+    var job = root.progressJob
+    if (job) {
+      var jobs = job.jobs && job.jobs.length ? job.jobs : [job]
+      var keys = []
+      for (var i = 0; i < jobs.length; i++) keys.push(jobs[i].key)
+      root.progressDismissedKey = keys.join(",")
+    }
     root.progressJob = Model.progressToast(root.snapshots, root.progressDismissedKey)
   }
 
   function ensureProgressArt(job) {
-    if (!job || !job.posterId || !job.posterServiceId) return
-    var service = root.serviceById(job.posterServiceId)
-    if (!service || (service.kind !== "sonarr" && service.kind !== "radarr")) return
-    var auth = root.cred(service.id)
-    var header = auth.apiKey ? Model.headerApiKey(auth.apiKey) : ""
-    root.enqueueArt({
-      kind: "poster",
-      serviceId: service.id,
-      url: Model.arrPosterUrl(service.url, service.kind, job.posterId),
-      headerText: header,
-      outputPath: Model.posterCachePath(root.cacheDir, service.id, job.posterId),
-      image: true
-    })
+    var jobs = job && job.jobs && job.jobs.length ? job.jobs : (job ? [job] : [])
+    for (var i = 0; i < jobs.length; i++) {
+      var row = jobs[i]
+      if (!row || !row.posterId || !row.posterServiceId) continue
+      var service = root.serviceById(row.posterServiceId)
+      if (!service || (service.kind !== "sonarr" && service.kind !== "radarr")) continue
+      var auth = root.cred(service.id)
+      var header = auth.apiKey ? Model.headerApiKey(auth.apiKey) : ""
+      root.enqueueArt({
+        kind: "poster",
+        serviceId: service.id,
+        url: Model.arrPosterUrl(service.url, service.kind, row.posterId),
+        headerText: header,
+        outputPath: Model.posterCachePath(root.cacheDir, service.id, row.posterId),
+        image: true
+      })
+    }
   }
 
   function sendToast(event) {

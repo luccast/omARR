@@ -1603,38 +1603,62 @@ function progressToastCandidates(snapshots) {
   return out
 }
 
-function progressToast(snapshots, dismissedKey) {
-  var skip = String(dismissedKey || "")
-  var best = null
-  var cands = progressToastCandidates(snapshots)
-  for (var i = 0; i < cands.length; i++) {
-    if (cands[i].key === skip) continue
-    if (!best || cands[i].score > best.score) best = cands[i]
+function dismissedKeys(raw) {
+  var s = String(raw || "")
+  if (!s) return {}
+  var parts = s.split(",")
+  var out = {}
+  for (var i = 0; i < parts.length; i++) {
+    if (parts[i]) out[parts[i]] = true
   }
-  if (!best) return null
-  var art = matchProgressPoster(snapshots, best)
+  return out
+}
+
+function decorateProgressJob(snapshots, cand) {
+  var art = matchProgressPoster(snapshots, cand)
   return {
-    key: best.key,
-    itemId: best.itemId,
-    serviceId: best.serviceId,
-    serviceName: best.serviceName,
-    kind: best.kind,
-    title: best.title,
-    progress: best.progress,
-    status: best.status,
-    speed: best.speed,
-    timeleft: best.timeleft,
+    key: cand.key,
+    itemId: cand.itemId,
+    serviceId: cand.serviceId,
+    serviceName: cand.serviceName,
+    kind: cand.kind,
+    title: cand.title,
+    progress: cand.progress,
+    status: cand.status,
+    speed: cand.speed,
+    timeleft: cand.timeleft,
     posterServiceId: art.posterServiceId,
     posterId: art.posterId
   }
 }
 
+function progressToast(snapshots, dismissedKey) {
+  var skip = dismissedKeys(dismissedKey)
+  var cands = progressToastCandidates(snapshots)
+  var visible = []
+  var best = null
+  for (var i = 0; i < cands.length; i++) {
+    if (skip[cands[i].key]) continue
+    visible.push(cands[i])
+    if (!best || cands[i].score > best.score) best = cands[i]
+  }
+  if (!best) return null
+  var jobs = []
+  for (var j = 0; j < visible.length; j++) jobs.push(decorateProgressJob(snapshots, visible[j]))
+  var lead = decorateProgressJob(snapshots, best)
+  lead.jobs = jobs
+  lead.count = jobs.length
+  return lead
+}
+
 function progressToastStale(key, snapshots) {
-  var want = String(key || "")
-  if (!want) return true
+  var skip = dismissedKeys(key)
+  var names = []
+  for (var k in skip) names.push(k)
+  if (!names.length) return true
   var cands = progressToastCandidates(snapshots)
   for (var i = 0; i < cands.length; i++) {
-    if (cands[i].key === want) return false
+    if (skip[cands[i].key]) return false
   }
   return true
 }
