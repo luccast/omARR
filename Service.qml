@@ -70,6 +70,17 @@ Item {
     return null
   }
 
+  function effectiveConfig() {
+    if (!root.shell) return null
+    if (root.shell.shellConfig) return root.shell.shellConfig
+    if (root.shell.barConfig) return { bar: root.shell.barConfig }
+    return null
+  }
+
+  function refreshSettings() {
+    root.pluginSettings = Model.pluginSettings(root.effectiveConfig(), Model.PLUGIN_ID)
+  }
+
   function persistSettings(values) {
     var current = Model.normalizeSettings(root.pluginSettings)
     var extra = values && typeof values === "object" ? values : {}
@@ -1125,6 +1136,11 @@ Item {
     onLoadFailed: root.seenIds = []
   }
 
+  Connections {
+    target: root.shell
+    function onBarConfigChanged() { root.refreshSettings() }
+  }
+
   Process {
     id: ensureDirProc
     running: false
@@ -1253,7 +1269,7 @@ Item {
   }
 
   onServicesChanged: root.rebuildSnapshots()
-  onShellChanged: root.pluginSettings = Model.pluginSettings(root.shell ? root.shell.shellConfig : null, Model.PLUGIN_ID)
+  onShellChanged: root.refreshSettings()
   onPanelOpenChanged: if (root.panelOpen) {
     root.clearUnread()
     root.forcePoll()

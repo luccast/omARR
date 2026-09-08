@@ -88,9 +88,9 @@ Panel {
   }
 
   function close() {
-    setCenterHoverRevealSuppressed(false)
     if (root.service) root.service.panelOpen = false
     root.controller.hide()
+    setCenterHoverRevealSuppressed(false)
   }
 
   function toggle() {
@@ -105,8 +105,12 @@ Panel {
   }
 
   function setCenterHoverRevealSuppressed(value) {
-    if (root.bar && "centerHoverRevealSuppressed" in root.bar)
-      root.bar.centerHoverRevealSuppressed = value
+    if (!root.bar) return
+    if (typeof root.bar.setCenterHoverRevealSuppressed === "function") {
+      try {
+        root.bar.setCenterHoverRevealSuppressed(!!value)
+      } catch (e) {}
+    }
   }
 
   function clampSelection() {
