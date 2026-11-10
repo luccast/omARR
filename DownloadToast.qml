@@ -5,6 +5,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 import qs.Commons
+import qs.Commons as Commons
 import qs.Ui
 import "Model.js" as Model
 
@@ -99,8 +100,8 @@ Item {
       implicitWidth: Style.space(380)
       implicitHeight: slot.height + borderTop + borderBottom
       radius: Style.cornerRadius
-      color: Color.notifications.background
-      borderSpec: Border.surfaceSpec("notifications", "border", Color.notifications.border, Math.max(1, Style.space(2)))
+      color: Commons.Color.notifications.background
+      borderSpec: Border.surfaceSpec("notifications", "border", Commons.Color.notifications.border, Math.max(1, Style.space(2)))
       clip: true
 
       Behavior on implicitHeight {
@@ -204,7 +205,7 @@ Item {
               Text {
                 Layout.fillWidth: true
                 text: root.row ? root.row.title : ""
-                color: Color.notifications.text
+                color: Commons.Color.notifications.text
                 font.family: "Liberation Sans"
                 font.pixelSize: Style.font.title
                 font.bold: true
@@ -216,7 +217,7 @@ Item {
 
               Text {
                 text: "󰅖"
-                color: Qt.darker(Color.notifications.text, 1.4)
+                color: Qt.darker(Commons.Color.notifications.text, 1.4)
                 font.pixelSize: Style.font.icon
                 MouseArea {
                   anchors.fill: parent
@@ -231,7 +232,7 @@ Item {
               Layout.fillWidth: true
               visible: root.metaLine !== ""
               text: root.metaLine
-              color: Qt.darker(Color.notifications.text, 1.4)
+              color: Qt.darker(Commons.Color.notifications.text, 1.4)
               font.family: "Liberation Sans"
               font.pixelSize: Style.font.caption
               elide: Text.ElideRight
@@ -249,7 +250,7 @@ Item {
                 width: parent.width * Math.max(0, Math.min(1, root.row ? root.row.progress : 0))
                 height: parent.height
                 radius: parent.radius
-                color: Color.notifications.text
+                color: Commons.Color.notifications.text
               }
             }
           }
@@ -280,7 +281,7 @@ Item {
             Text {
               width: parent.width - closeGlyph.implicitWidth - parent.spacing
               text: root.jobCount === 1 ? "1 download" : (root.jobCount + " downloads")
-              color: Color.notifications.text
+              color: Commons.Color.notifications.text
               font.family: "Liberation Sans"
               font.pixelSize: Style.font.title
               font.bold: true
@@ -291,7 +292,7 @@ Item {
             Text {
               id: closeGlyph
               text: "󰅖"
-              color: Qt.darker(Color.notifications.text, 1.4)
+              color: Qt.darker(Commons.Color.notifications.text, 1.4)
               font.pixelSize: Style.font.icon
               MouseArea {
                 anchors.fill: parent
@@ -356,7 +357,7 @@ Item {
                   Text {
                     width: parent.width
                     text: jobRow.item ? jobRow.item.title : ""
-                    color: Color.notifications.text
+                    color: Commons.Color.notifications.text
                     font.family: "Liberation Sans"
                     font.pixelSize: Style.font.bodySmall
                     font.bold: true
@@ -379,14 +380,14 @@ Item {
                         width: parent.width * Math.max(0, Math.min(1, jobRow.item ? jobRow.item.progress : 0))
                         height: parent.height
                         radius: parent.radius
-                        color: Color.notifications.text
+                        color: Commons.Color.notifications.text
                       }
                     }
 
                     Text {
                       id: pct
                       text: jobRow.item ? ((jobRow.item.serviceName ? jobRow.item.serviceName + " · " : "") + Model.formatProgress(jobRow.item.progress)) : ""
-                      color: Qt.darker(Color.notifications.text, 1.4)
+                      color: Qt.darker(Commons.Color.notifications.text, 1.4)
                       font.family: "Liberation Sans"
                       font.pixelSize: Style.font.caption
                       textFormat: Text.PlainText
@@ -401,7 +402,7 @@ Item {
             visible: root.multi && root.extraCount > 0
             width: parent.width - parent.leftPadding - parent.rightPadding
             text: "+" + root.extraCount + " more"
-            color: Qt.darker(Color.notifications.text, 1.4)
+            color: Qt.darker(Commons.Color.notifications.text, 1.4)
             font.family: "Liberation Sans"
             font.pixelSize: Style.font.caption
             textFormat: Text.PlainText
