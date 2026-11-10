@@ -1253,7 +1253,22 @@ Item {
   }
 
   onServicesChanged: root.rebuildSnapshots()
-  onShellChanged: root.pluginSettings = Model.pluginSettings(root.shell ? root.shell.shellConfig : null, Model.PLUGIN_ID)
+  // Omarchy 4.5+ exposes only barConfig (the `bar` section), assigned after shell; older shells passed shellConfig.
+  function loadSettings() {
+    var sh = root.shell
+    var cfg = sh ? (sh.shellConfig || (sh.barConfig ? { bar: sh.barConfig } : null)) : null
+    var next = Model.pluginSettings(cfg, Model.PLUGIN_ID)
+    if (JSON.stringify(next) !== JSON.stringify(root.pluginSettings)) root.pluginSettings = next
+  }
+
+  onShellChanged: root.loadSettings()
+
+  Connections {
+    target: root.shell
+    ignoreUnknownSignals: true
+    function onBarConfigChanged() { root.loadSettings() }
+    function onShellConfigChanged() { root.loadSettings() }
+  }
   onPanelOpenChanged: if (root.panelOpen) {
     root.clearUnread()
     root.forcePoll()
