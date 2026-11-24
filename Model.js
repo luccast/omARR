@@ -288,7 +288,7 @@ function pluginSettings(config, id) {
   }
 
   var bar = config.bar && config.bar.layout ? config.bar.layout : {}
-  var sections = ["left", "center", "right"]
+  var sections = ["left", "centerBegin", "center", "centerEnd", "right", "tray"]
   for (var s = 0; s < sections.length; s++) {
     var entries = bar[sections[s]] || []
     for (var i = 0; i < entries.length; i++) {
