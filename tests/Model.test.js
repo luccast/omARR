@@ -79,6 +79,17 @@ assert.equal(Model.pluginSettings({
   plugins: [{ id: Model.PLUGIN_ID, services: [{ kind: "radarr", url: "http://r:7878" }] }]
 }).services[0].kind, "radarr", "plugins[] fallback")
 
+;["centerBegin", "centerEnd", "tray"].forEach(function(section) {
+  var layout = {}
+  layout[section] = [{ id: Model.PLUGIN_ID, services: [
+    { id: "svc-1", kind: "radarr", url: "http://r:7878" },
+    { id: "svc-2", kind: "sonarr", url: "http://s:8989" }
+  ] }]
+  var found = Model.pluginSettings({ bar: { layout: layout } })
+  assert.equal(found.services.length, 2, "settings load from " + section)
+  assert.equal(Model.addService(found, { kind: "lidarr" }).services[2].id, "svc-3", "add keeps services in " + section)
+})
+
 var bogus = Model.normalizeService({ kind: "nope", url: "not-a-url" }, 0)
 assert.equal(bogus.kind, "generic", "unknown kind")
 assert.equal(bogus.url, "", "invalid url dropped")
